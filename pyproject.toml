@@ -1,3 +1,20 @@
+[project]
+name = "your-project-name"
+version = "0.1.0"
+description = "Short description of your project"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "igraph",
+    "pypcode",
+    "frozendict",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+
 [tool.black]
 line-length = 120
 target-version = ['py310']
