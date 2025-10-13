@@ -1,3 +1,4 @@
+from collections import deque
 from typing import Iterator
 from igraph import Graph
 
@@ -49,64 +50,35 @@ class CodeFlowGraph:
             dst = self.graph.vs[e.target]["addr"] if "addr" in self.graph.vs[e.target].attributes() else e.target
             print(f"{hex(src) if isinstance(src,int) else src} -> {hex(dst) if isinstance(dst,int) else dst}")
 
-    def traverse_loopaware(self) -> Iterator[int]:
+    def traverse(self):
         """
-        Traverse CFG in an order where each node is visited only after all
-        non-loop parents are visited. Parents that are part of a loop back-edge
-        to the node are ignored for this constraint.
-        Yields addresses.
+        Generator that yields nodes such that each node is visited
+        only after all its parents have been visited.
         """
         g = self.graph
 
-        # strongly connected components
-        scc = g.components(mode="STRONG")
-        comp_index = scc.membership
-        n_comp = len(scc)
+        # Compute indegrees (number of unvisited parents)
+        indegrees = {v.index: len(g.predecessors(v.index)) for v in g.vs}
 
-        # condensation DAG
-        dag = Graph(directed=True)
-        dag.add_vertices(n_comp)
-        for e in g.es:
-            u, v = e.tuple
-            cu, cv = comp_index[u], comp_index[v]
-            if cu != cv:
-                dag.add_edge(cu, cv)
+        # Start with nodes that have no parents
+        queue = deque([v.index for v in g.vs if indegrees[v.index] == 0])
+        visited_count = 0
 
-        # topo order of SCCs
-        comp_order = dag.topological_sorting(mode="OUT")
+        while queue:
+            vid = queue.popleft()
+            addr = g.vs[vid]["addr"]
+            yield addr
+            visited_count += 1
 
-        visited = set()
-        for comp in comp_order:
-            nodes = scc[comp]
+            # Decrease indegree for children
+            for succ in g.successors(vid):
+                indegrees[succ] -= 1
+                if indegrees[succ] == 0:
+                    queue.append(succ)
 
-            if len(nodes) == 1:  # not a cycle
-                v = nodes[0]
-                if v not in visited:
-                    yield self.graph.vs[v]["addr"]
-                    visited.add(v)
-            else:
-                # cycle component
-                # find candidate "entry points" = nodes with parent outside the SCC
-                entry_candidates = []
-                for v in nodes:
-                    for p in g.predecessors(v):
-                        if comp_index[p] != comp:
-                            entry_candidates.append(v)
-                            break
-
-                # fallback if none found: just pick first node
-                entry = entry_candidates[0] if entry_candidates else nodes[0]
-
-                # yield entry first
-                if entry not in visited:
-                    yield self.graph.vs[entry]["addr"]
-                    visited.add(entry)
-
-                # then the rest in some order (input order here)
-                for v in nodes:
-                    if v not in visited:
-                        yield self.graph.vs[v]["addr"]
-                        visited.add(v)
+        # Detect cycles (optional but useful)
+        if visited_count != g.vcount():
+            raise ValueError("Graph has a cycle — cannot fully traverse topologically.")
 
     def first_common_ancestor(self, addr1: int, addr2: int) -> int:
         anc_u = set(self.graph.subcomponent(self.addr_to_vertex_id[addr1], mode="IN"))
