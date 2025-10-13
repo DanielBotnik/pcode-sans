@@ -64,6 +64,7 @@ class InstructionState:
         new_state.unique = self.unique.copy()
         new_state.ram = self.ram.copy()
         new_state.stack = self.stack.copy()
+        new_state.last_callsite = self.last_callsite
         return new_state
 
 
@@ -75,7 +76,6 @@ class Engine:
         self.current_inst: int = 0
         self.previous_marks: list[int] = list()
         self._handlers: dict[pypcode.OpCode, Callable[[Engine, pypcode.PcodeOp], None]] = {}
-        self.__last_callsite: Optional[CallSite] = None
         self.callsites: list[CallSite] = []
         self.conditional_sites: list[ConditionalSite] = []
         self.addr_to_conditional_site: dict[int, ConditionalSite] = {}
@@ -83,7 +83,7 @@ class Engine:
 
         self._init_handlers()
 
-        for current_addr in self.bin_func.code_flow_grpah.traverse_loopaware():
+        for current_addr in self.bin_func.code_flow_grpah.traverse():
             blk = self.bin_func.blocks_dict_start_address[current_addr]
             parents = self.bin_func.code_flow_grpah.get_parnets(current_addr)
             self.previous_marks = [self.bin_func.blocks_dict[parent].last_instruction_addr for parent in parents]
@@ -122,7 +122,6 @@ class Engine:
         current_address = blk.start
 
         while current_address < blk.end:
-            print(hex(current_address))
             for op in self.bin_func.opcodes[current_address].ops:
                 handler = self._handlers.get(op.opcode, None)
                 if handler is not None:
@@ -141,6 +140,17 @@ class Engine:
 
         if len(self.previous_marks) == 1:
             self.instructions_state[self.current_inst] = self.instructions_state[self.previous_marks[0]].copy()
+
+            if self.instructions_state[self.current_inst].last_callsite is not None:
+                for reg in list(self.instructions_state[self.current_inst].regs.keys()):
+                    if reg not in self.bin_func.project.get_unaffected_registers():
+                        del self.instructions_state[self.current_inst].regs[reg]
+
+                self.instructions_state[self.current_inst].regs[self.bin_func.project.get_ret_register()] = (
+                    self.instructions_state[self.current_inst].last_callsite
+                )
+                self.instructions_state[self.current_inst].last_callsite = None
+
         elif len(self.previous_marks) == 2:
             try:
                 blk_a = self.bin_func.blocks_dict[self.previous_marks[0]]
@@ -148,6 +158,22 @@ class Engine:
 
                 x = self.instructions_state[self.previous_marks[0]]
                 y = self.instructions_state[self.previous_marks[1]]
+
+                if x.last_callsite is not None:
+                    for reg in list(x.regs.keys()):
+                        if reg not in self.bin_func.project.get_unaffected_registers():
+                            del x.regs[reg]
+
+                    x.regs[self.bin_func.project.get_ret_register()] = x.last_callsite
+                    x.last_callsite = None
+
+                if y.last_callsite is not None:
+                    for reg in list(y.regs.keys()):
+                        if reg not in self.bin_func.project.get_unaffected_registers():
+                            del y.regs[reg]
+
+                    y.regs[self.bin_func.project.get_ret_register()] = y.last_callsite
+                    y.last_callsite = None
 
                 common_ancestor_addr = self.bin_func.common_ancestor(blk_a.start, blk_b.start)
                 common_condsite = self.addr_to_conditional_site[common_ancestor_addr]
@@ -218,17 +244,6 @@ class Engine:
                 common_instruction_state.stack[addr] = previous_instruction_states[0].stack[addr]
 
             self.instructions_state[self.current_inst] = common_instruction_state
-
-        if self.__last_callsite is not None:
-            for reg in list(self.instructions_state[self.current_inst].regs.keys()):
-                if reg not in self.bin_func.project.get_unaffected_registers():
-                    del self.instructions_state[self.current_inst].regs[reg]
-
-            self.instructions_state[self.current_inst].regs[
-                self.bin_func.project.get_ret_register()
-            ] = self.__last_callsite
-            self.instructions_state[self.current_inst].last_callsite = self.__last_callsite
-            self.__last_callsite = None
 
         self.previous_marks = [self.current_inst]
 
@@ -334,7 +349,7 @@ class Engine:
         callsite = CallSite(self.current_inst, target, args)
 
         self.callsites.append(callsite)
-        self.__last_callsite = callsite
+        self.instructions_state[self.current_inst].last_callsite = callsite
 
     def _handle_int_zext(self, op: pypcode.PcodeOp):
         # Assuming zext(X) == X for now.
