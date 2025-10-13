@@ -141,6 +141,14 @@ class Engine:
         instruction_state.regs[self.bin_func.project.get_ret_register()] = instruction_state.last_callsite
         instruction_state.last_callsite = None
 
+    def __merge_dicts(self, x_dict, y_dict, condsite, iftrue, iffalse):
+        """Merge two dict-like states using ConditionalExpression when values differ."""
+        merged = {}
+        for k in x_dict.keys() & y_dict.keys():
+            xv, yv = x_dict[k], y_dict[k]
+            merged[k] = xv if xv == yv else ConditionalExpression(condsite, iftrue[k], iffalse[k])
+        return merged
+
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
 
@@ -176,38 +184,18 @@ class Engine:
                     iffalse_state = x
 
                 common_instruction_state = InstructionState()
-
-                for reg in list(x.regs.keys() & y.regs.keys()):
-                    if x.regs[reg] == y.regs[reg]:
-                        common_instruction_state.regs[reg] = x.regs[reg]
-                    else:
-                        common_instruction_state.regs[reg] = ConditionalExpression(
-                            common_condsite, iftrue_state.regs[reg], iffalse_state.regs[reg]
-                        )
-
-                for unique in list(x.unique.keys() & y.unique.keys()):
-                    if x.unique[unique] == y.unique[unique]:
-                        common_instruction_state.unique[unique] = x.unique[unique]
-                    else:
-                        common_instruction_state.unique[unique] = ConditionalExpression(
-                            common_condsite, iftrue_state.unique[unique], iffalse_state.unique[unique]
-                        )
-
-                for addr in list(x.ram.keys() & y.ram.keys()):
-                    if x.ram[addr] == y.ram[addr]:
-                        common_instruction_state.ram[addr] = x.ram[addr]
-                    else:
-                        common_instruction_state.ram[addr] = ConditionalExpression(
-                            common_condsite, iftrue_state.ram[addr], iffalse_state.ram[addr]
-                        )
-
-                for addr in list(x.stack.keys() & y.stack.keys()):
-                    if x.stack[addr] == y.stack[addr]:
-                        common_instruction_state.stack[addr] = x.stack[addr]
-                    else:
-                        common_instruction_state.stack[addr] = ConditionalExpression(
-                            common_condsite, iftrue_state.stack[addr], iffalse_state.stack[addr]
-                        )
+                common_instruction_state.regs = self.__merge_dicts(
+                    x.regs, y.regs, common_condsite, iftrue_state.regs, iffalse_state.regs
+                )
+                common_instruction_state.unique = self.__merge_dicts(
+                    x.unique, y.unique, common_condsite, iftrue_state.unique, iffalse_state.unique
+                )
+                common_instruction_state.ram = self.__merge_dicts(
+                    x.ram, y.ram, common_condsite, iftrue_state.ram, iffalse_state.ram
+                )
+                common_instruction_state.stack = self.__merge_dicts(
+                    x.stack, y.stack, common_condsite, iftrue_state.stack, iffalse_state.stack
+                )
 
                 self.instructions_state[self.current_inst] = common_instruction_state
             except Exception as nig:
