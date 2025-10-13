@@ -130,6 +130,17 @@ class Engine:
                     print(op.opcode)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
+    def __clear_after_callsite(self, instruction_state: InstructionState) -> None:
+        if instruction_state.last_callsite is None:
+            return
+
+        for reg in list(instruction_state.regs.keys()):
+            if reg not in self.bin_func.project.get_unaffected_registers():
+                del instruction_state.regs[reg]
+
+        instruction_state.regs[self.bin_func.project.get_ret_register()] = instruction_state.last_callsite
+        instruction_state.last_callsite = None
+
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
 
@@ -140,16 +151,7 @@ class Engine:
 
         if len(self.previous_marks) == 1:
             self.instructions_state[self.current_inst] = self.instructions_state[self.previous_marks[0]].copy()
-
-            if self.instructions_state[self.current_inst].last_callsite is not None:
-                for reg in list(self.instructions_state[self.current_inst].regs.keys()):
-                    if reg not in self.bin_func.project.get_unaffected_registers():
-                        del self.instructions_state[self.current_inst].regs[reg]
-
-                self.instructions_state[self.current_inst].regs[self.bin_func.project.get_ret_register()] = (
-                    self.instructions_state[self.current_inst].last_callsite
-                )
-                self.instructions_state[self.current_inst].last_callsite = None
+            self.__clear_after_callsite(self.instructions_state[self.current_inst])
 
         elif len(self.previous_marks) == 2:
             try:
@@ -158,22 +160,8 @@ class Engine:
 
                 x = self.instructions_state[self.previous_marks[0]]
                 y = self.instructions_state[self.previous_marks[1]]
-
-                if x.last_callsite is not None:
-                    for reg in list(x.regs.keys()):
-                        if reg not in self.bin_func.project.get_unaffected_registers():
-                            del x.regs[reg]
-
-                    x.regs[self.bin_func.project.get_ret_register()] = x.last_callsite
-                    x.last_callsite = None
-
-                if y.last_callsite is not None:
-                    for reg in list(y.regs.keys()):
-                        if reg not in self.bin_func.project.get_unaffected_registers():
-                            del y.regs[reg]
-
-                    y.regs[self.bin_func.project.get_ret_register()] = y.last_callsite
-                    y.last_callsite = None
+                self.__clear_after_callsite(x)
+                self.__clear_after_callsite(y)
 
                 common_ancestor_addr = self.bin_func.common_ancestor(blk_a.start, blk_b.start)
                 common_condsite = self.addr_to_conditional_site[common_ancestor_addr]
