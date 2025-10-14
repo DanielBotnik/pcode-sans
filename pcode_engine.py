@@ -77,6 +77,7 @@ class Engine:
         self._handlers: dict[pypcode.OpCode, Callable[[Engine, pypcode.PcodeOp], None]] = {}
         self.callsites: list[CallSite] = []
         self.conditional_sites: list[ConditionalSite] = []
+        self.memory_accesses: list[MemoryAccess] = []
         self.addr_to_conditional_site: dict[int, ConditionalSite] = {}
         self.current_blk: FunctionBlock = None
         self.__loops_start_addresses = set(self.bin_func.loops.keys())
@@ -418,6 +419,9 @@ class Engine:
                         pass  # TODO: Handle stack later
                     else:
                         res = MemoryAccess(self.current_inst, offset.left, offset.right, MemoryAccessType.LOAD)
+
+                if isinstance(res, MemoryAccess):
+                    self.memory_accesses.append(res)
 
         self.handle_put(op.output, res)
 
