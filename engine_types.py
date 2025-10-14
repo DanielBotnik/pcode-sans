@@ -104,3 +104,13 @@ class MemoryAccess:
             return f"*({repr_or_hexint(self.base)}{addition_str})"
         else:
             return f"*({repr_or_hexint(self.base)}{addition_str}) = {repr_or_hexint(self.stored_value)}"
+
+    def __eq__(self, other):
+        if not isinstance(other, MemoryAccess):
+            return False
+        return (  # TODO: addr might need to be compared too
+            self.base == other.base
+            and self.offset == other.offset
+            and self.access_type == other.access_type
+            and self.stored_value == other.stored_value
+        )
