@@ -112,6 +112,7 @@ class Engine:
                 pypcode.OpCode.BRANCH: self._do_nothing,
                 pypcode.OpCode.BRANCHIND: self._handle_branchind,
                 pypcode.OpCode.RETURN: self._do_nothing,
+                pypcode.OpCode.INT_SLESS: self._handle_int_sless,
                 pypcode.OpCode.INT_SLESSEQUAL: self._handle_int_slessequal,
                 pypcode.OpCode.BOOL_NEGATE: self._handle_bool_negate,
                 pypcode.OpCode.INT_RIGHT: self._handle_int_right,
@@ -346,6 +347,12 @@ class Engine:
         condsite = ConditionalSite(self.current_inst, condition, goto_iftrue, goto_iffalse)
         self.conditional_sites.append(condsite)
         self.addr_to_conditional_site[self.current_blk.start] = condsite
+
+    def _handle_int_sless(self, op: pypcode.PcodeOp):
+        left = self.handle_get(op.inputs[0])
+        right = self.handle_get(op.inputs[1])
+
+        self.handle_put(op.output, self._handle_binop(left, right, "<"))
 
     def _handle_int_slessequal(self, op: pypcode.PcodeOp):
         left = self.handle_get(op.inputs[0])
