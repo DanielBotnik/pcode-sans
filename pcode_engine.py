@@ -230,7 +230,7 @@ class Engine:
             return eval_numeric_expression(left, right, op, PTR_SIZE)
 
         elif isinstance(left, BinaryOp):
-            if left.op == op and op in ["+", "*", "&", "|"]:
+            if left.op == op and op in ["+", "*", "&", "|"] and isinstance(left.right, int):
                 return BinaryOp(left.left, eval_numeric_expression(left.right, right, op, PTR_SIZE), op)
             elif op in ["!="] and left.op in ["<", "<="] and right == 0:
                 return BinaryOp(left.left, left.right, left.op)
