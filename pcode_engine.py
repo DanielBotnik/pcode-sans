@@ -419,13 +419,13 @@ class Engine:
             if require_deref:
                 if isinstance(offset, (int, UnaryOp)):
                     res = UnaryOp(offset, "*")
-                elif isinstance(offset, Register):
-                    res = MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.LOAD)
                 elif isinstance(offset, BinaryOp):
                     if isinstance(offset.left, Register) and offset.left.offset == 116:
                         pass  # TODO: Handle stack later
                     else:
                         res = MemoryAccess(self.current_inst, offset.left, offset.right, MemoryAccessType.LOAD)
+                else:
+                    res = MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.LOAD)
 
                 if isinstance(res, MemoryAccess):
                     self.memory_accesses.append(res)
