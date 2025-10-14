@@ -8,7 +8,6 @@ from engine_types import (
     ConditionalExpression,
     ConditionalSite,
     Register,
-    RegisterBase,
     MemoryAccess,
     MemoryAccessType,
     UnaryOp,
@@ -278,10 +277,9 @@ class Engine:
             elif isinstance(offset, BinaryOp):
                 right = offset.right
                 left = offset.left
-                if not (isinstance(right, int) and isinstance(left, RegisterBase) and offset.op == "+"):
-                    raise RuntimeError("Supports only ram sp movements")
-                if left.offset != 116:  # sp offset, also add address check
-                    raise RuntimeError("Supports only ram sp movements")
+                if isinstance(right, int) and isinstance(left, Register) and offset.op == "+":
+                    if left.offset != 116:  # sp offset, also add address check
+                        raise RuntimeError("Supports only ram sp movements")
 
                 import ctypes  # todo: support 64 bit
 
