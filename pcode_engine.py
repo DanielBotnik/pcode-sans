@@ -322,6 +322,11 @@ class Engine:
     def _handle_callind(self, op: pypcode.PcodeOp):
         target = self.handle_get(op.inputs[0])
 
+        # TODO: do this better
+        if self.bin_func.project.context.language.id.startswith("MIPS:") and isinstance(target, BinaryOp):
+            if target.left == -0x2 and target.op == "&":
+                target = target.right
+
         args = frozendict(
             {
                 arg_num: self.instructions_state[self.current_inst].regs[reg]
