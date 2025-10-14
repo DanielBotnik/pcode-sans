@@ -88,6 +88,9 @@ class TestEngineMIPSBE:
         bin_func = BinaryFunction(ADDR, CODE, project)
         engine = Engine(bin_func)
 
-        import ipdb
-
-        ipdb.set_trace()
+        assert MemoryAccess(0x005601C4, Arg(0), 0x38, MemoryAccessType.LOAD) in engine.memory_accesses
+        assert MemoryAccess(0x005601D4, Arg(0), 0x44, MemoryAccessType.LOAD) in engine.memory_accesses
+        assert MemoryAccess(0x005601E8, Arg(0), 0x3C, MemoryAccessType.LOAD) in engine.memory_accesses
+        assert MemoryAccess(0x00560224, Arg(0), 0x40, MemoryAccessType.LOAD) in engine.memory_accesses
+        assert MemoryAccess(0x00560244, Arg(0), 0x40, MemoryAccessType.LOAD) in engine.memory_accesses
+        assert MemoryAccess(0x00560260, Arg(0), 0x3C, MemoryAccessType.LOAD) in engine.memory_accesses
