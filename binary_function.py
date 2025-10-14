@@ -1,9 +1,13 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 
 import pypcode
 
 from dataclasses import dataclass
 from cfg import CodeFlowGraph
+
+if TYPE_CHECKING:
+    from engine_types import BinaryOp
 from project import Project
 
 from collections import deque
@@ -31,10 +35,13 @@ class BinaryFunction:
         self.blocks_dict_start_address: dict[int, FunctionBlock] = {}
         self.return_blocks: set[FunctionBlock] = set()
 
+        self.loops: dict[int, Loop] = dict()
+
         self.code_flow_grpah: CodeFlowGraph = CodeFlowGraph()
 
         self._init_opcodes()
         self._init_function_nodes()
+        self._init_loops()
 
     def _init_opcodes(self):
         opcodes = self.project.context.translate(self.code, self.start).ops
@@ -154,6 +161,10 @@ class BinaryFunction:
 
                 current_address += self.opcodes[current_address].bytes_size
 
+    def _init_loops(self):
+        for loop in self.code_flow_grpah.get_loops():
+            self.loops[loop[0]] = Loop(start=loop[0], blocks=set(loop))
+
     def _next_address(self, current_address):
         return current_address + self.opcodes[current_address].bytes_size
 
@@ -191,3 +202,10 @@ class FunctionBlock:
                 self._last_instruction_addr = addr
                 return addr
             addr = next_addr
+
+
+@dataclass
+class Loop:
+    start: int
+    blocks: set[int]
+    exit_conditions: set[BinaryOp] = None

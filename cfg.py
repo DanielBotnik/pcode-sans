@@ -1,4 +1,5 @@
 from collections import deque
+from functools import lru_cache
 from typing import Iterator
 from igraph import Graph
 
@@ -52,33 +53,60 @@ class CodeFlowGraph:
 
     def traverse(self):
         """
-        Generator that yields nodes such that each node is visited
-        only after all its parents have been visited.
+        Traverse the graph starting from vertex 0.
+        A node is yielded only when all its parents have been visited.
+        If not all parents are visited, push the missing parents first.
         """
         g = self.graph
-
-        # Compute indegrees (number of unvisited parents)
-        indegrees = {v.index: len(g.predecessors(v.index)) for v in g.vs}
-
-        # Start with nodes that have no parents
-        queue = deque([v.index for v in g.vs if indegrees[v.index] == 0])
-        visited_count = 0
+        cycles = self._get_loop_vertecies()
+        cycle_vertceis = {v for cycle in cycles for v in cycle}
+        visited = set()
+        queue = deque([0])  # start from vertex 0
 
         while queue:
             vid = queue.popleft()
-            addr = g.vs[vid]["addr"]
-            yield addr
-            visited_count += 1
 
-            # Decrease indegree for children
-            for succ in g.successors(vid):
-                indegrees[succ] -= 1
-                if indegrees[succ] == 0:
-                    queue.append(succ)
+            # Skip if already visited
+            if vid in visited:
+                continue
 
-        # Detect cycles (optional but useful)
-        if visited_count != g.vcount():
-            raise ValueError("Graph has a cycle — cannot fully traverse topologically.")
+            parents = g.predecessors(vid)
+
+            if any(vid == cycle[0] for cycle in cycles):  # vid is the first vertex in a cycle
+                # Check if all non loop parents have been visited
+                if all(p in visited for p in parents if p not in cycle_vertceis):
+                    addr = g.vs[vid]["addr"]
+                    yield addr
+                    visited.add(vid)
+
+                    # Enqueue children (successors)
+                    for child in g.successors(vid):
+                        if child not in visited:
+                            queue.append(child)
+                else:
+                    for p in parents:
+                        if p not in visited:
+                            queue.append(p)
+                    # Revisit this node later
+                    queue.append(vid)
+
+            # Check if all parents have been visited
+            if all(p in visited for p in parents):
+                addr = g.vs[vid]["addr"]
+                yield addr
+                visited.add(vid)
+
+                # Enqueue children (successors)
+                for child in g.successors(vid):
+                    if child not in visited:
+                        queue.append(child)
+
+            else:
+                for p in parents:
+                    if p not in visited:
+                        queue.append(p)
+                # Revisit this node later
+                queue.append(vid)
 
     def first_common_ancestor(self, addr1: int, addr2: int) -> int:
         anc_u = set(self.graph.subcomponent(self.addr_to_vertex_id[addr1], mode="IN"))
@@ -101,3 +129,28 @@ class CodeFlowGraph:
         vertex2 = self.addr_to_vertex_id[addr2]
 
         return vertex1 in self.graph.subcomponent(vertex2, mode="OUT")
+
+    @lru_cache
+    def _get_loop_vertecies(self) -> list[list[int]]:
+        """
+        Return loops as tuples of vertex indices,
+        rotated so the vertex closest to 0 comes first in each loop.
+        """
+
+        g = self.graph
+
+        def rotate_cycle(cycle):
+            # Find index of vertex closest to 0
+            distances = g.distances(0, cycle)[0]
+            min_idx = distances.index(min(distances))
+
+            return tuple(cycle[min_idx:] + cycle[:min_idx])
+
+        return [rotate_cycle(cycle) for cycle in g.simple_cycles()]
+
+    @lru_cache
+    def get_loops(self) -> list[list[int]]:
+        """
+        Return loops as tuples of addresses, such that the first address in each list is the loop entry
+        """
+        return [[self.graph.vs[vid]["addr"] for vid in cycle] for cycle in self._get_loop_vertecies()]

@@ -79,6 +79,7 @@ class Engine:
         self.conditional_sites: list[ConditionalSite] = []
         self.addr_to_conditional_site: dict[int, ConditionalSite] = {}
         self.current_blk: FunctionBlock = None
+        self.__loops_start_addresses = set(self.bin_func.loops.keys())
 
         self._init_handlers()
 
@@ -150,6 +151,13 @@ class Engine:
 
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
+
+        if self.current_inst in self.__loops_start_addresses:
+            good_marks = []
+            for mark in self.previous_marks:
+                if self.bin_func.blocks_dict[mark].start not in self.bin_func.loops[self.current_inst].blocks:
+                    good_marks.append(mark)
+            self.previous_marks = good_marks
 
         if len(self.previous_marks) == 0:
             self.instructions_state[self.current_inst] = InstructionState()
@@ -366,6 +374,8 @@ class Engine:
 
         if bool_expr.op == "==":
             negated_expr = self._handle_binop(bool_expr.left, bool_expr.right, "!=")
+        if bool_expr.op == "!=":
+            negated_expr = self._handle_binop(bool_expr.left, bool_expr.right, "==")
 
         self.handle_put(op.output, negated_expr)
 
