@@ -52,6 +52,20 @@ class BinaryOp:
     def __repr__(self):
         return f"({repr_or_hexint(self.left)} {self.op} {repr_or_hexint(self.right)})"
 
+    def negate(self) -> "BinaryOp":
+        neg_op_map = {
+            "==": "!=",
+            "!=": "==",
+            "<": ">=",
+            "<=": ">",
+            ">": "<=",
+            ">=": "<",
+        }
+        if self.op not in neg_op_map:
+            raise ValueError(f"Cannot negate binary operation with operator '{self.op}'")
+
+        return BinaryOp(self.left, self.right, neg_op_map[self.op])
+
 
 @dataclass(frozen=True)
 class ConditionalSite:

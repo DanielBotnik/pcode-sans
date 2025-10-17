@@ -385,12 +385,7 @@ class Engine:
     def _handle_bool_negate(self, op: pypcode.PcodeOp):
         bool_expr: BinaryOp = self.handle_get(op.inputs[0])
 
-        if bool_expr.op == "==":
-            negated_expr = self._handle_binop(bool_expr.left, bool_expr.right, "!=")
-        if bool_expr.op == "!=":
-            negated_expr = self._handle_binop(bool_expr.left, bool_expr.right, "==")
-
-        self.handle_put(op.output, negated_expr)
+        self.handle_put(op.output, bool_expr.negate())
 
     def _handle_int_right(self, op: pypcode.PcodeOp):
         left = self.handle_get(op.inputs[0])
