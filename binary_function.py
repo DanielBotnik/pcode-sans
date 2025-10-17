@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pypcode
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from cfg import CodeFlowGraph
 
 if TYPE_CHECKING:
@@ -35,7 +35,8 @@ class BinaryFunction:
         self.blocks_dict_start_address: dict[int, FunctionBlock] = {}
         self.return_blocks: set[FunctionBlock] = set()
 
-        self.loops: dict[int, Loop] = dict()
+        self.loops_dict: dict[int, Loop] = dict()
+        self.loops_dict_start_address: dict[int, Loop] = dict()
 
         self.code_flow_grpah: CodeFlowGraph = CodeFlowGraph()
 
@@ -163,7 +164,11 @@ class BinaryFunction:
 
     def _init_loops(self):
         for loop in self.code_flow_grpah.get_loops():
-            self.loops[loop[0]] = Loop(start=loop[0], blocks=set(loop))
+            loop = Loop(start=loop[0], blocks=set(loop))
+            for blk_addr in loop.blocks:
+                for addr in range(blk_addr, self.blocks_dict[blk_addr].end + 1, self.opcodes[blk_addr].bytes_size):
+                    self.loops_dict[addr] = loop
+            self.loops_dict_start_address[loop.start] = loop
 
     def _next_address(self, current_address):
         return current_address + self.opcodes[current_address].bytes_size
@@ -207,5 +212,5 @@ class FunctionBlock:
 @dataclass
 class Loop:
     start: int
-    blocks: set[int]
-    exit_conditions: set[BinaryOp] = None
+    blocks: set[int] = field(default_factory=set)
+    exit_conditions: dict[int, BinaryOp] = field(default_factory=dict)

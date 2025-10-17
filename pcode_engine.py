@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass
 import pypcode
 
 from engine_types import (
@@ -56,6 +57,7 @@ class InstructionState:
         self.ram: dict[int, Any] = {}
         self.stack: dict[int, Any] = {}
         self.last_callsite: Optional[CallSite] = None
+        self.goto_state: dict[int, InstructionState] = dict()
 
     def copy(self) -> InstructionState:
         new_state = InstructionState()
@@ -80,7 +82,7 @@ class Engine:
         self.memory_accesses: list[MemoryAccess] = []
         self.addr_to_conditional_site: dict[int, ConditionalSite] = {}
         self.current_blk: FunctionBlock = None
-        self.__loops_start_addresses = set(self.bin_func.loops.keys())
+        self.__unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
 
         self._init_handlers()
 
@@ -109,7 +111,7 @@ class Engine:
                 pypcode.OpCode.INT_ZEXT: self._handle_int_zext,
                 pypcode.OpCode.LOAD: self._handle_load,
                 pypcode.OpCode.CBRANCH: self._handle_cbranch,
-                pypcode.OpCode.BRANCH: self._do_nothing,
+                pypcode.OpCode.BRANCH: self._handle_branch,
                 pypcode.OpCode.BRANCHIND: self._handle_branchind,
                 pypcode.OpCode.RETURN: self._do_nothing,
                 pypcode.OpCode.INT_SLESS: self._handle_int_sless,
@@ -153,11 +155,12 @@ class Engine:
 
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
+        self.__unfinished_condsite = None
 
-        if self.current_inst in self.__loops_start_addresses:
+        if self.current_inst in self.bin_func.loops_dict_start_address:
             good_marks = []
             for mark in self.previous_marks:
-                if self.bin_func.blocks_dict[mark].start not in self.bin_func.loops[self.current_inst].blocks:
+                if self.bin_func.blocks_dict[mark].start not in self.bin_func.loops_dict[self.current_inst].blocks:
                     good_marks.append(mark)
             self.previous_marks = good_marks
 
@@ -167,7 +170,12 @@ class Engine:
             return
 
         if len(self.previous_marks) == 1:
-            self.instructions_state[self.current_inst] = self.instructions_state[self.previous_marks[0]].copy()
+            if self.current_inst in self.instructions_state[self.previous_marks[0]].goto_state:
+                self.instructions_state[self.current_inst] = (
+                    self.instructions_state[self.previous_marks[0]].goto_state[self.current_inst].copy()
+                )
+            else:
+                self.instructions_state[self.current_inst] = self.instructions_state[self.previous_marks[0]].copy()
             self.__clear_after_callsite(self.instructions_state[self.current_inst])
 
         elif len(self.previous_marks) == 2:
@@ -176,7 +184,11 @@ class Engine:
                 blk_b = self.bin_func.blocks_dict[self.previous_marks[1]]
 
                 x = self.instructions_state[self.previous_marks[0]]
+                if self.current_inst in x.goto_state:
+                    x = x.goto_state[self.current_inst]
                 y = self.instructions_state[self.previous_marks[1]]
+                if self.current_inst in y.goto_state:
+                    y = y.goto_state[self.current_inst]
                 self.__clear_after_callsite(x)
                 self.__clear_after_callsite(y)
 
@@ -344,14 +356,39 @@ class Engine:
         # Assuming zext(X) == X for now.
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
-    def _handle_cbranch(self, op: pypcode.PcodeOp):
-        goto_iftrue = self.handle_get(op.inputs[0])
-        goto_iffalse = self.bin_func._next_address(self.current_inst)
-        condition = self.handle_get(op.inputs[1])
-
+    def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> None:
         condsite = ConditionalSite(self.current_inst, condition, goto_iftrue, goto_iffalse)
         self.conditional_sites.append(condsite)
         self.addr_to_conditional_site[self.current_blk.start] = condsite
+
+        loop = self.bin_func.loops_dict.get(self.current_inst, None)
+        if loop is not None and isinstance(condition, BinaryOp):
+            if goto_iftrue not in loop.blocks:
+                loop.exit_conditions[self.current_inst] = condition
+            elif goto_iffalse not in loop.blocks:
+                loop.exit_conditions[self.current_inst] = condition.negate()
+
+    def _handle_branch(self, op: pypcode.PcodeOp):
+        goto_addr = self.handle_get(op.inputs[0])
+
+        if self.__unfinished_condsite is None:
+            return
+
+        self._create_condsite(self.__unfinished_condsite.condition, self.__unfinished_condsite.goto_iftrue, goto_addr)
+
+    def _handle_cbranch(self, op: pypcode.PcodeOp):
+        goto_iftrue = self.handle_get(op.inputs[0])
+        goto_iffalse = self.bin_func._next_address(self.current_inst)
+        condition: BinaryOp | int = self.handle_get(op.inputs[1])  # TODO: handle int conditions
+
+        if goto_iffalse == goto_iftrue:
+            self.instructions_state[self.current_inst].goto_state[goto_iftrue] = self.instructions_state[
+                self.current_inst
+            ].copy()
+            self.__unfinished_condsite = _UnfinishedConditionalSite(condition, goto_iftrue)
+            return
+
+        self._create_condsite(condition, goto_iftrue, goto_iffalse)
 
     def _handle_int_sless(self, op: pypcode.PcodeOp):
         left = self.handle_get(op.inputs[0])
@@ -473,3 +510,9 @@ class Engine:
             self.instructions_state[self.current_inst].unique[output.offset] = val
         else:
             raise RuntimeError(f"Unexpected space in handle_put: {space}")
+
+
+@dataclass
+class _UnfinishedConditionalSite:
+    condition: BinaryOp
+    goto_iftrue: int
