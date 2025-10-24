@@ -48,6 +48,7 @@ class BinaryOp:
     left: Any
     right: Any
     op: str
+    signed: bool = False
 
     def __repr__(self):
         return f"({repr_or_hexint(self.left)} {self.op} {repr_or_hexint(self.right)})"

@@ -94,40 +94,47 @@ class Engine:
             self.previous_marks = [self.bin_func.blocks_dict[parent].last_instruction_addr for parent in parents]
             self._analyze_block(blk)
 
-    def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str):
+    def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str, signed=False):
         left = self.handle_get(op.inputs[0])
         right = self.handle_get(op.inputs[1])
-        self.handle_put(op.output, self._handle_binop(left, right, op_symbol))
+        self.handle_put(op.output, self._handle_binop(left, right, op_symbol, signed))
 
     def _init_handlers(self):
         self._handlers.update(
             {
-                pypcode.OpCode.IMARK: self._handle_imark,
+                # Binary Arithmetic Operations
                 pypcode.OpCode.INT_ADD: partial(self._handle_binary_op, op_symbol="+"),
+                pypcode.OpCode.INT_MULT: partial(self._handle_binary_op, op_symbol="*"),
+                # Binary Bitshits Operations
                 pypcode.OpCode.INT_LEFT: partial(self._handle_binary_op, op_symbol="<<"),
-                pypcode.OpCode.INT_LESS: partial(self._handle_binary_op, op_symbol="<"),
+                pypcode.OpCode.INT_RIGHT: partial(self._handle_binary_op, op_symbol=">>"),
+                pypcode.OpCode.INT_AND: partial(self._handle_binary_op, op_symbol="&"),
+                pypcode.OpCode.INT_XOR: partial(self._handle_binary_op, op_symbol="^"),
+                # Binary Conditional Operations
                 pypcode.OpCode.INT_EQUAL: partial(self._handle_binary_op, op_symbol="=="),
+                pypcode.OpCode.INT_SLESS: partial(self._handle_binary_op, op_symbol="<"),
+                pypcode.OpCode.INT_LESS: partial(self._handle_binary_op, op_symbol="<"),
+                pypcode.OpCode.INT_SLESSEQUAL: partial(self._handle_binary_op, op_symbol="<=", signed=True),
+                pypcode.OpCode.INT_NOTEQUAL: partial(self._handle_binary_op, op_symbol="!="),
+                # Variable / Memory Operations
                 pypcode.OpCode.COPY: self._handle_copy,
                 pypcode.OpCode.STORE: self._handle_store,
-                pypcode.OpCode.INT_AND: partial(self._handle_binary_op, op_symbol="&"),
-                pypcode.OpCode.INT_NOTEQUAL: partial(self._handle_binary_op, op_symbol="!="),
-                pypcode.OpCode.INT_2COMP: self._handle_int_2comp,
-                pypcode.OpCode.CALLIND: self._handle_callind,
-                pypcode.OpCode.CALL: self._handle_call,
-                pypcode.OpCode.CALLOTHER: self._do_nothing,  # TODO: Think if required, example is MIPS `rdhwr` in `sshd` `fileno` Function
-                pypcode.OpCode.INT_ZEXT: self._handle_int_zext,
                 pypcode.OpCode.LOAD: self._handle_load,
+                pypcode.OpCode.IMARK: self._handle_imark,
+                # CodeFlow Operations
+                pypcode.OpCode.CALL: self._handle_call,
+                pypcode.OpCode.CALLIND: self._handle_callind,
+                pypcode.OpCode.CALLOTHER: self._do_nothing,  # TODO: Think if required, example is MIPS `rdhwr` in `sshd` `fileno` Function
                 pypcode.OpCode.CBRANCH: self._handle_cbranch,
                 pypcode.OpCode.BRANCH: self._handle_branch,
                 pypcode.OpCode.BRANCHIND: self._handle_branchind,
                 pypcode.OpCode.RETURN: self._do_nothing,
-                pypcode.OpCode.INT_SLESS: partial(self._handle_binary_op, op_symbol="<"),
-                pypcode.OpCode.INT_SLESSEQUAL: partial(self._handle_binary_op, op_symbol="<="),
+                # Unary Operations
+                pypcode.OpCode.INT_2COMP: self._handle_int_2comp,
                 pypcode.OpCode.BOOL_NEGATE: self._handle_bool_negate,
-                pypcode.OpCode.INT_RIGHT: partial(self._handle_binary_op, op_symbol=">>"),
+                # Byte Operations
                 pypcode.OpCode.INT_SEXT: self._handle_int_sext,
-                pypcode.OpCode.INT_MULT: partial(self._handle_binary_op, op_symbol="*"),
-                pypcode.OpCode.INT_XOR: partial(self._handle_binary_op, op_symbol="^"),
+                pypcode.OpCode.INT_ZEXT: self._handle_int_zext,
                 pypcode.OpCode.SUBPIECE: self._handle_subpiece,
             }
         )
@@ -267,7 +274,7 @@ class Engine:
         self.previous_marks = [self.current_inst]
 
     @staticmethod
-    def _handle_binop(left, right, op: str):
+    def _handle_binop(left, right, op: str, signed=False):
 
         if isinstance(left, int) and isinstance(right, int):
             return eval_numeric_expression(left, right, op, PTR_SIZE)
@@ -276,12 +283,14 @@ class Engine:
             if left.op == op and op in ["+", "*", "&", "|"] and isinstance(left.right, int):
                 return BinaryOp(left.left, eval_numeric_expression(left.right, right, op, PTR_SIZE), op)
             elif op in ["!=", "=="] and left.op in ["<", "<="] and right == 0:
-                return BinaryOp(left.left, left.right, left.op)
+                return BinaryOp(left.left, left.right, left.op, left.signed)
+            elif left.op == "^" and right == 1 and op == "<" and not signed:
+                return BinaryOp(left.left, left.right, "==")
 
         elif isinstance(right, int) and right == 0 and op == "+":
             return left
 
-        return BinaryOp(left, right, op)
+        return BinaryOp(left, right, op, signed)
 
     def _handle_copy(self, op: pypcode.PcodeOp):
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
