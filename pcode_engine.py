@@ -240,6 +240,18 @@ class Engine:
 
             self.instructions_state[self.current_inst] = common_instruction_state
 
+        if self.current_inst in self.bin_func.loops_dict_start_address:
+            for blk in self.bin_func.loops_dict[self.current_inst].blocks:
+                for op in self.bin_func.opcodes[blk].ops:
+                    if op.output is None:
+                        continue
+
+                    space = op.output.space.name
+                    if space != "register":
+                        continue
+
+                    self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
+
         self.previous_marks = [self.current_inst]
 
     @staticmethod
