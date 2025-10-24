@@ -198,11 +198,9 @@ class Engine:
                 iftrue_state, iffalse_state = None, None
 
                 if self.bin_func.is_ancestor(blk_a.start, common_condsite.iffalse):
-                    iftrue_state = x
-                    iffalse_state = y
+                    iftrue_state, iffalse_state = x, y
                 else:
-                    iftrue_state = y
-                    iffalse_state = x
+                    iftrue_state, iffalse_state = y, x
 
                 common_instruction_state = InstructionState()
                 common_instruction_state.regs = self.__merge_dicts(
