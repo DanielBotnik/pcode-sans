@@ -119,6 +119,10 @@ class Engine:
                 pypcode.OpCode.INT_SLESSEQUAL: self._handle_int_slessequal,
                 pypcode.OpCode.BOOL_NEGATE: self._handle_bool_negate,
                 pypcode.OpCode.INT_RIGHT: self._handle_int_right,
+                pypcode.OpCode.INT_SEXT: self._handle_int_sext,
+                pypcode.OpCode.INT_MULT: self._handle_int_mul,
+                pypcode.OpCode.INT_XOR: self._handle_int_xor,
+                pypcode.OpCode.SUBPIECE: self._handle_subpiece,
             }
         )
 
@@ -368,6 +372,22 @@ class Engine:
         # Assuming zext(X) == X for now.
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
+    def _handle_int_mul(self, op: pypcode.PcodeOp):
+        left = self.handle_get(op.inputs[0])
+        right = self.handle_get(op.inputs[1])
+
+        self.handle_put(op.output, self._handle_binop(left, right, "*"))
+
+    def _handle_int_xor(self, op: pypcode.PcodeOp):
+        left = self.handle_get(op.inputs[0])
+        right = self.handle_get(op.inputs[1])
+
+        self.handle_put(op.output, self._handle_binop(left, right, "^"))
+
+    def _handle_subpiece(self, op: pypcode.PcodeOp):
+        # Assumming X = SUBPIECE(X, N) for now
+        self.handle_put(op.output, self.handle_get(op.inputs[0]))
+
     def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> ConditionalSite:
         condsite = ConditionalSite(self.current_inst, condition, goto_iftrue, goto_iffalse)
         self.conditional_sites.append(condsite)
@@ -448,6 +468,10 @@ class Engine:
         right = self.handle_get(op.inputs[1])
 
         self.handle_put(op.output, self._handle_binop(left, right, ">>"))
+
+    def _handle_int_sext(self, op: pypcode.PcodeOp):
+        # TODO: For now assuming X = sext(X)
+        self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
     def _handle_load(self, op: pypcode.PcodeOp):
         space = op.inputs[0].getSpaceFromConst().name
