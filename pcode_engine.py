@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from functools import partial
 import pypcode
 
 from engine_types import (
@@ -93,18 +94,23 @@ class Engine:
             self.previous_marks = [self.bin_func.blocks_dict[parent].last_instruction_addr for parent in parents]
             self._analyze_block(blk)
 
+    def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str):
+        left = self.handle_get(op.inputs[0])
+        right = self.handle_get(op.inputs[1])
+        self.handle_put(op.output, self._handle_binop(left, right, op_symbol))
+
     def _init_handlers(self):
         self._handlers.update(
             {
                 pypcode.OpCode.IMARK: self._handle_imark,
-                pypcode.OpCode.INT_ADD: self._handle_int_add,
-                pypcode.OpCode.INT_LEFT: self._handle_int_left,
-                pypcode.OpCode.INT_LESS: self._handle_int_less,
-                pypcode.OpCode.INT_EQUAL: self._handle_int_equal,
+                pypcode.OpCode.INT_ADD: partial(self._handle_binary_op, op_symbol="+"),
+                pypcode.OpCode.INT_LEFT: partial(self._handle_binary_op, op_symbol="<<"),
+                pypcode.OpCode.INT_LESS: partial(self._handle_binary_op, op_symbol="<"),
+                pypcode.OpCode.INT_EQUAL: partial(self._handle_binary_op, op_symbol="=="),
                 pypcode.OpCode.COPY: self._handle_copy,
                 pypcode.OpCode.STORE: self._handle_store,
-                pypcode.OpCode.INT_AND: self._handle_int_and,
-                pypcode.OpCode.INT_NOTEQUAL: self._handle_int_notequal,
+                pypcode.OpCode.INT_AND: partial(self._handle_binary_op, op_symbol="&"),
+                pypcode.OpCode.INT_NOTEQUAL: partial(self._handle_binary_op, op_symbol="!="),
                 pypcode.OpCode.INT_2COMP: self._handle_int_2comp,
                 pypcode.OpCode.CALLIND: self._handle_callind,
                 pypcode.OpCode.CALL: self._handle_call,
@@ -115,13 +121,13 @@ class Engine:
                 pypcode.OpCode.BRANCH: self._handle_branch,
                 pypcode.OpCode.BRANCHIND: self._handle_branchind,
                 pypcode.OpCode.RETURN: self._do_nothing,
-                pypcode.OpCode.INT_SLESS: self._handle_int_sless,
-                pypcode.OpCode.INT_SLESSEQUAL: self._handle_int_slessequal,
+                pypcode.OpCode.INT_SLESS: partial(self._handle_binary_op, op_symbol="<"),
+                pypcode.OpCode.INT_SLESSEQUAL: partial(self._handle_binary_op, op_symbol="<="),
                 pypcode.OpCode.BOOL_NEGATE: self._handle_bool_negate,
-                pypcode.OpCode.INT_RIGHT: self._handle_int_right,
+                pypcode.OpCode.INT_RIGHT: partial(self._handle_binary_op, op_symbol=">>"),
                 pypcode.OpCode.INT_SEXT: self._handle_int_sext,
-                pypcode.OpCode.INT_MULT: self._handle_int_mul,
-                pypcode.OpCode.INT_XOR: self._handle_int_xor,
+                pypcode.OpCode.INT_MULT: partial(self._handle_binary_op, op_symbol="*"),
+                pypcode.OpCode.INT_XOR: partial(self._handle_binary_op, op_symbol="^"),
                 pypcode.OpCode.SUBPIECE: self._handle_subpiece,
             }
         )
@@ -277,30 +283,6 @@ class Engine:
 
         return BinaryOp(left, right, op)
 
-    def _handle_int_add(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "+"))
-
-    def _handle_int_left(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "<<"))
-
-    def _handle_int_less(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "<"))
-
-    def _handle_int_equal(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "=="))
-
     def _handle_copy(self, op: pypcode.PcodeOp):
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
@@ -326,18 +308,6 @@ class Engine:
 
         else:
             print("nigga", space)
-
-    def _handle_int_and(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "&"))
-
-    def _handle_int_notequal(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "!="))
 
     def _handle_int_2comp(self, op: pypcode.PcodeOp):
         val = op.inputs[0].offset  # INT_2COMP is always int values.
@@ -371,18 +341,6 @@ class Engine:
     def _handle_int_zext(self, op: pypcode.PcodeOp):
         # Assuming zext(X) == X for now.
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
-
-    def _handle_int_mul(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "*"))
-
-    def _handle_int_xor(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "^"))
 
     def _handle_subpiece(self, op: pypcode.PcodeOp):
         # Assumming X = SUBPIECE(X, N) for now
@@ -429,18 +387,6 @@ class Engine:
 
         self._create_condsite(condition, goto_iftrue, goto_iffalse)
 
-    def _handle_int_sless(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "<"))
-
-    def _handle_int_slessequal(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, "<="))
-
     def _do_nothing(self, op: pypcode.PcodeOp):
         pass
 
@@ -462,12 +408,6 @@ class Engine:
         bool_expr: BinaryOp = self.handle_get(op.inputs[0])
 
         self.handle_put(op.output, bool_expr.negate())
-
-    def _handle_int_right(self, op: pypcode.PcodeOp):
-        left = self.handle_get(op.inputs[0])
-        right = self.handle_get(op.inputs[1])
-
-        self.handle_put(op.output, self._handle_binop(left, right, ">>"))
 
     def _handle_int_sext(self, op: pypcode.PcodeOp):
         # TODO: For now assuming X = sext(X)
