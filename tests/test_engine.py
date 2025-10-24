@@ -61,7 +61,7 @@ class TestEngineMIPSBE:
         engine = Engine(bin_func)
 
         expected_result = ConditionalExpression(
-            engine.addr_to_conditional_site[0x00403EAC],
+            engine.addr_to_codeflow_conditional_site[0x00403EAC],
             UnaryOp(0x5EAB30, "*"),
             UnaryOp(0x5EAB34, "*"),
         )
@@ -128,3 +128,17 @@ class TestEngineMIPSBE:
         assert MemoryAccess(0x004A3DA8, Arg(0), 0x14, MemoryAccessType.LOAD) in engine.memory_accesses
 
         # TODO: When Loops are good add callsite tests
+
+    def test_movn_instruction(self):
+        # sshd binary `status_to_message` function
+        CODE = b"<\x1c\x00_'\xbd\xff\xb8'\x9c'\xe0<\x05\x00_\xaf\xbf\x00D'\xa7\x00\x18\xaf\xb0\x00@\xaf\xbc\x00\x10$\xa5\x91\xc0\x8f\x99\x81|$\x06\x00(\x00\x80\x80!\x03 \xf8\t\x00\xe0 !.\x03\x00\t\x00@8!\x8f\xbf\x00D$\x02\x00\x08\x02\x03\x10\x0b\x8f\xb0\x00@\x00\x02\x10\x80\x00\xe2\x10!\x8cB\x00\x00\x03\xe0\x00\x08'\xbd\x00H"
+        ADDR = 0x00422D60
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert engine.conditional_sites[0] == ConditionalSite(0x422DA8, BinaryOp(Arg(0), 9, "<"), 2, 0x422DAC)
+        assert engine.instructions_state[0x00422DA8].regs[
+            project.context.registers["v0"].offset
+        ] == ConditionalExpression(engine.conditional_sites[0], Arg(0), 8)

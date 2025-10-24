@@ -80,9 +80,10 @@ class Engine:
         self.callsites: list[CallSite] = []
         self.conditional_sites: list[ConditionalSite] = []
         self.memory_accesses: list[MemoryAccess] = []
-        self.addr_to_conditional_site: dict[int, ConditionalSite] = {}
+        self.addr_to_codeflow_conditional_site: dict[int, ConditionalSite] = {}
         self.current_blk: FunctionBlock = None
         self.__unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
+        self.__conditional_move_condition: Optional[ConditionalSite] = None
 
         self._init_handlers()
 
@@ -156,6 +157,7 @@ class Engine:
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
         self.__unfinished_condsite = None
+        self.__conditional_move_condition = None
 
         if self.current_inst in self.bin_func.loops_dict_start_address:
             good_marks = []
@@ -193,7 +195,7 @@ class Engine:
                 self.__clear_after_callsite(y)
 
                 common_ancestor_addr = self.bin_func.common_ancestor(blk_a.start, blk_b.start)
-                common_condsite = self.addr_to_conditional_site[common_ancestor_addr]
+                common_condsite = self.addr_to_codeflow_conditional_site[common_ancestor_addr]
 
                 iftrue_state, iffalse_state = None, None
 
@@ -366,10 +368,11 @@ class Engine:
         # Assuming zext(X) == X for now.
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
-    def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> None:
+    def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> ConditionalSite:
         condsite = ConditionalSite(self.current_inst, condition, goto_iftrue, goto_iffalse)
         self.conditional_sites.append(condsite)
-        self.addr_to_conditional_site[self.current_blk.start] = condsite
+        if goto_iftrue != 2:
+            self.addr_to_codeflow_conditional_site[self.current_blk.start] = condsite
 
         loop = self.bin_func.loops_dict.get(self.current_inst, None)
         if loop is not None and isinstance(condition, BinaryOp):
@@ -377,6 +380,8 @@ class Engine:
                 loop.exit_conditions[self.current_inst] = condition
             elif goto_iffalse not in loop.blocks:
                 loop.exit_conditions[self.current_inst] = condition.negate()
+
+        return condsite
 
     def _handle_branch(self, op: pypcode.PcodeOp):
         goto_addr = self.handle_get(op.inputs[0])
@@ -390,6 +395,10 @@ class Engine:
         goto_iftrue = self.handle_get(op.inputs[0])
         goto_iffalse = self.bin_func._next_address(self.current_inst)
         condition: BinaryOp | int = self.handle_get(op.inputs[1])  # TODO: handle int conditions
+
+        if goto_iftrue == 2:
+            self.__conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
+            return
 
         if goto_iffalse == goto_iftrue:
             self.instructions_state[self.current_inst].goto_state[goto_iftrue] = self.instructions_state[
@@ -515,7 +524,14 @@ class Engine:
         space = output.space.name
 
         if space == "register":
-            self.instructions_state[self.current_inst].regs[output.offset] = val
+            if self.__conditional_move_condition is None:
+                self.instructions_state[self.current_inst].regs[output.offset] = val
+            else:
+                self.instructions_state[self.current_inst].regs[output.offset] = ConditionalExpression(
+                    self.__conditional_move_condition,
+                    val,
+                    self.instructions_state[self.current_inst].regs[output.offset],
+                )
         elif space == "unique":
             self.instructions_state[self.current_inst].unique[output.offset] = val
         else:

@@ -128,13 +128,17 @@ class BinaryFunction:
                 for op in self.opcodes[current_address].ops:
                     if op.opcode == pypcode.OpCode.CBRANCH:
 
-                        self.code_flow_grpah.add_edge(current_blk.start, op.inputs[0].offset)
-                        add_address_to_visit(op.inputs[0].offset)
+                        branch_addr = op.inputs[0].offset
+                        if branch_addr == 2:  # This means skip insturctions
+                            continue
+
+                        self.code_flow_grpah.add_edge(current_blk.start, branch_addr)
+                        add_address_to_visit(branch_addr)
 
                         # Sometimes the next address is the jump address
                         # future `OpCode.BRANCH` will handle that case
                         # TODO: How will this handle conditional sites
-                        if op.inputs[0].offset == self._next_address(current_address):
+                        if branch_addr == self._next_address(current_address):
                             continue
 
                         self.code_flow_grpah.add_edge(current_blk.start, self._next_address(current_address))
