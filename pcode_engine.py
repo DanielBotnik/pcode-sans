@@ -1,7 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
+
 import pypcode
+import ctypes
 
 from engine_types import (
     Arg,
@@ -311,8 +313,6 @@ class Engine:
                     if left.offset != 116:  # sp offset, also add address check
                         raise RuntimeError("Supports only ram sp movements")
 
-                import ctypes  # todo: support 64 bit
-
                 signed_offset = ctypes.c_int32(right).value
                 self.instructions_state[self.current_inst].stack[signed_offset] = val
 
@@ -335,16 +335,34 @@ class Engine:
             if target.left == -0x2 and target.op == "&":
                 target = target.right
 
-        args = frozendict(
-            {
-                arg_num: self.instructions_state[self.current_inst].regs[reg]
-                for arg_num, reg in self.bin_func.project.get_args_registers().items()
-                if reg in self.instructions_state[self.current_inst].regs
-            }
-        )
+        args = {
+            arg_num: self.instructions_state[self.current_inst].regs[reg]
+            for arg_num, reg in self.bin_func.project.get_args_registers().items()
+            if reg in self.instructions_state[self.current_inst].regs
+        }
 
-        callsite = CallSite(self.current_inst, target, args)
+        current_stack = self.instructions_state[self.current_inst].regs[116]
+        stack_argument_offset = 0
+        if isinstance(current_stack, BinaryOp):
+            stack_argument_offset = ctypes.c_int32(current_stack.right).value
 
+        stack_argument_offset += 0x10
+        arg_num = 4
+
+        has_stack_argument = False
+
+        while stack_argument_offset in self.instructions_state[self.current_inst].stack:
+            has_stack_argument = True
+            args[arg_num] = self.instructions_state[self.current_inst].stack[stack_argument_offset]
+            stack_argument_offset += 0x4
+            arg_num += 1
+
+        if has_stack_argument:
+            for arg_num, _ in self.bin_func.project.get_args_registers().items():
+                if arg_num not in args:
+                    args[arg_num] = Arg(arg_num)
+
+        callsite = CallSite(self.current_inst, target, frozendict(args))
         self.callsites.append(callsite)
         self.instructions_state[self.current_inst].last_callsite = callsite
 
@@ -434,14 +452,14 @@ class Engine:
             if isinstance(offset, BinaryOp):
                 if isinstance(offset.left, Register) and offset.left.offset == 116:
                     # todo: Add struct member access
-                    import ctypes  #  todo: support 64 bit
 
                     signed_value = ctypes.c_int32(offset.right).value
                     res = self.instructions_state[self.current_inst].stack.get(signed_value, None)
 
-                    # todo remove
+                    # TODO: Make works for all arches, not only mips
                     if signed_value >= 0x10:
                         require_deref = False
+                        res = Arg((signed_value) // 4)
 
                     if res is not None:
                         require_deref = False
