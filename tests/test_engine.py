@@ -129,7 +129,7 @@ class TestEngineMIPSBE:
 
         # TODO: When Loops are good add callsite tests
 
-    def test_movn_instruction(self):
+    def test_conditional_move_instruction(self):
         # sshd binary `status_to_message` function
         CODE = b"<\x1c\x00_'\xbd\xff\xb8'\x9c'\xe0<\x05\x00_\xaf\xbf\x00D'\xa7\x00\x18\xaf\xb0\x00@\xaf\xbc\x00\x10$\xa5\x91\xc0\x8f\x99\x81|$\x06\x00(\x00\x80\x80!\x03 \xf8\t\x00\xe0 !.\x03\x00\t\x00@8!\x8f\xbf\x00D$\x02\x00\x08\x02\x03\x10\x0b\x8f\xb0\x00@\x00\x02\x10\x80\x00\xe2\x10!\x8cB\x00\x00\x03\xe0\x00\x08'\xbd\x00H"
         ADDR = 0x00422D60
@@ -142,3 +142,59 @@ class TestEngineMIPSBE:
         assert engine.instructions_state[0x00422DA8].regs[
             project.context.registers["v0"].offset
         ] == ConditionalExpression(engine.conditional_sites[0], Arg(0), 8)
+
+    def test_conditional_site_with_memory_value(self):
+        # sshd binary `handle_is_ok` function
+
+        CODE = b"\x04\x80\x00\x0e\x00\x00\x10!<\x02\x00_\x8cC\xdb\xb0\x00\x83\x18+\x10`\x00\t\x00\x00\x10!$\x03\x000<\x02\x00_p\x830\x02\x8cB\xdb\xb4\x00\xc2 !\x8c\x82\x00\x00\x00E\x10&,B\x00\x01\x03\xe0\x00\x08\x00\x00\x00\x00"
+        ADDR = 0x00422C70
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(engine.conditional_sites) == 2
+        assert ConditionalSite(0x422C70, BinaryOp(Arg(0), 0, "<"), 0x422CAC, 0x422C78) in engine.conditional_sites
+        assert (
+            ConditionalSite(0x422C84, BinaryOp(Arg(0), UnaryOp(0x005EDBB0, "*"), "<"), 0x422CAC, 0x00422C8C)
+            in engine.conditional_sites
+        )
+
+    def test_conditional_site_with_callsite(self):
+        # sshd binary `get_recv_buf_size` function
+
+        CODE = b"<\x1c\x00_'\xbd\xff\xd0'\x9c'\xe0\xaf\xbf\x00,\xaf\xbc\x00\x18\x8f\x82\x85\x08\x8f\x99\x86\xb4\x03 \xf8\t\x8cD\x00\x00$\x03\x00\x04\x8f\xbc\x00\x184\x05\xff\xff$\x06\x10\x02\xaf\xa3\x00 '\xa3\x00 '\xa7\x00$\x8f\x99\x8c(\x00@ !\x03 \xf8\t\xaf\xa3\x00\x10\x10@\x00\x02<\x02\x00\x01\xaf\xa2\x00$\x8f\xbf\x00,\x8f\xa2\x00$\x03\xe0\x00\x08'\xbd\x000"
+        ADDR = 0x0042795C
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        expected_inner_callsite = CallSite(
+            0x00427978,
+            UnaryOp(0x5EAE94, "*"),
+            frozendict({0: UnaryOp(UnaryOp(0x005EACE8, "*"), "*")}),
+        )
+        expected_callsite = CallSite(
+            0x004279A4,
+            UnaryOp(0x5EB408, "*"),
+            frozendict(
+                {
+                    0: expected_inner_callsite,
+                    1: 0xFFFF,
+                    2: 4098,
+                    3: BinaryOp(Register(116, 0x00427960, bin_func), 0xFFFFFFF4, "+"),
+                    4: BinaryOp(Register(116, 0x00427960, bin_func), 0xFFFFFFF0, "+"),
+                }
+            ),
+        )
+        assert len(engine.callsites) == 2
+        assert expected_inner_callsite in engine.callsites
+        assert expected_callsite in engine.callsites
+
+        expected_conditional_site = ConditionalSite(
+            0x004279AC, BinaryOp(expected_callsite, 0, "=="), 0x004279B8, 0x004279B4
+        )
+
+        assert len(engine.conditional_sites) == 1
+        assert expected_conditional_site == engine.conditional_sites[0]
