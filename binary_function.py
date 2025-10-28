@@ -148,8 +148,11 @@ class BinaryFunction:
                         block_reached_end = True
 
                     elif op.opcode == pypcode.OpCode.BRANCH:
-                        self.code_flow_grpah.add_edge(current_blk.start, op.inputs[0].offset)
-                        add_address_to_visit(op.inputs[0].offset)
+                        branch_addr = op.inputs[0].offset
+                        if self.start < branch_addr <= self.end:  # Jumping outside of the function
+                            self.code_flow_grpah.add_edge(current_blk.start, branch_addr)
+                            add_address_to_visit(branch_addr)
+
                         current_blk.end = self._next_address(current_address) - 1
                         block_reached_end = True
 

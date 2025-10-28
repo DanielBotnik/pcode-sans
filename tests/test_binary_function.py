@@ -99,3 +99,19 @@ class TestBinaryFunctionMIPSBE:
 
         verify_cfg_equal(cfg, bin_func.code_flow_grpah)
         verify_blocks_dict(bin_func)
+
+    def test_call_outside_func_is_not_branch(self):
+        # sshd binary `get_hostkey_public_by_type` function
+        CODE = b"\x08\x10\x0fL\x00\x000!"
+        ADDR = 0x00403E6C
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+
+        cfg = CodeFlowGraph()
+        cfg.add_block(0x00403E6C)
+
+        verify_cfg_equal(cfg, bin_func.code_flow_grpah)
+        verify_blocks_dict(bin_func)
+
+        assert len(bin_func.blocks_dict_start_address.keys()) == 1
