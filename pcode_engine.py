@@ -319,6 +319,9 @@ class Engine:
 
                 signed_offset = ctypes.c_int32(right).value
                 self.instructions_state[self.current_inst].stack[signed_offset] = val
+                self.memory_accesses.append(
+                    MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
+                )
 
         else:
             print("nigga", space)
@@ -331,6 +334,39 @@ class Engine:
     def _handle_call(self, op: pypcode.PcodeOp):
         self._handle_callind(op)
 
+    def _create_callsite(self, target: Any) -> CallSite:
+        args = {
+            arg_num: self.instructions_state[self.current_inst].regs[reg]
+            for arg_num, reg in self.bin_func.project.get_args_registers().items()
+            if reg in self.instructions_state[self.current_inst].regs
+        }
+
+        current_stack = self.instructions_state[self.current_inst].regs.get(116, None)
+        if current_stack is not None:
+            stack_argument_offset = 0
+            if isinstance(current_stack, BinaryOp):
+                stack_argument_offset = ctypes.c_int32(current_stack.right).value
+
+            stack_argument_offset += 0x10
+            arg_num = 4
+
+            while stack_argument_offset in self.instructions_state[self.current_inst].stack:
+                args[arg_num] = self.instructions_state[self.current_inst].stack[stack_argument_offset]
+                stack_argument_offset += 0x4
+                arg_num += 1
+
+        max_reg_arg = min(max(args.keys() if args else [0]), 4)
+
+        for arg_num, _ in self.bin_func.project.get_args_registers().items():
+            if arg_num not in args and arg_num < max_reg_arg:
+                args[arg_num] = Arg(arg_num)  # TODO: use handle_get, maybe its not Arg
+
+        callsite = CallSite(self.current_inst, target, frozendict(args))
+        self.callsites.append(callsite)
+        self.instructions_state[self.current_inst].last_callsite = callsite
+
+        return callsite
+
     def _handle_callind(self, op: pypcode.PcodeOp):
         target = self.handle_get(op.inputs[0])
 
@@ -339,36 +375,7 @@ class Engine:
             if target.left == -0x2 and target.op == "&":
                 target = target.right
 
-        args = {
-            arg_num: self.instructions_state[self.current_inst].regs[reg]
-            for arg_num, reg in self.bin_func.project.get_args_registers().items()
-            if reg in self.instructions_state[self.current_inst].regs
-        }
-
-        current_stack = self.instructions_state[self.current_inst].regs[116]
-        stack_argument_offset = 0
-        if isinstance(current_stack, BinaryOp):
-            stack_argument_offset = ctypes.c_int32(current_stack.right).value
-
-        stack_argument_offset += 0x10
-        arg_num = 4
-
-        has_stack_argument = False
-
-        while stack_argument_offset in self.instructions_state[self.current_inst].stack:
-            has_stack_argument = True
-            args[arg_num] = self.instructions_state[self.current_inst].stack[stack_argument_offset]
-            stack_argument_offset += 0x4
-            arg_num += 1
-
-        if has_stack_argument:
-            for arg_num, _ in self.bin_func.project.get_args_registers().items():
-                if arg_num not in args:
-                    args[arg_num] = Arg(arg_num)
-
-        callsite = CallSite(self.current_inst, target, frozendict(args))
-        self.callsites.append(callsite)
-        self.instructions_state[self.current_inst].last_callsite = callsite
+        self._create_callsite(target)
 
     def _handle_int_zext(self, op: pypcode.PcodeOp):
         # Assuming zext(X) == X for now.
@@ -395,6 +402,10 @@ class Engine:
 
     def _handle_branch(self, op: pypcode.PcodeOp):
         goto_addr = self.handle_get(op.inputs[0])
+
+        if goto_addr < self.bin_func.start or goto_addr >= self.bin_func.end:
+            self._create_callsite(goto_addr)
+            return
 
         if self.__unfinished_condsite is None:
             return
@@ -425,16 +436,7 @@ class Engine:
     def _handle_branchind(self, op: pypcode.PcodeOp):
         target = self.handle_get(op.inputs[0])
 
-        args = frozendict(
-            {
-                arg_num: self.instructions_state[self.current_inst].regs[reg]
-                for arg_num, reg in self.bin_func.project.get_args_registers().items()
-                if reg in self.instructions_state[self.current_inst].regs
-            }
-        )
-
-        callsite = CallSite(self.current_inst, target, args)
-        self.callsites.append(callsite)
+        self._create_callsite(target)
 
     def _handle_bool_negate(self, op: pypcode.PcodeOp):
         bool_expr: BinaryOp = self.handle_get(op.inputs[0])
