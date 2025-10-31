@@ -23,3 +23,24 @@ class TestLoops:
             },
         )
         assert bin_func.loops_dict_start_address[0x43F934] == expected_loop
+
+    def test_loop_with_gotos_to_exit(self):
+        # sshd binary `crypto_sign_ed25519_ref_fe25519_add` function
+        CODE = b"\x00\x00\x10!$\x07\x00\x80\x00\xc2\x18!\x00\xa2H!\x00\x82@!\x8cc\x00\x00$B\x00\x04\x8d)\x00\x00\x00i\x18!\x14G\xff\xf8\xad\x03\x00\x00\x08\x11\xbd\xbc\x00\x00\x00\x00"
+        ADDR = 0x0046FAF0
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(bin_func.loops_dict_start_address) == 1
+
+        expected_loop = Loop(
+            start=0x0046FAF8,
+            blocks={0x0046FAF8},
+            exit_conditions={
+                0x0046FB14: BinaryOp(BinaryOp(Register(8, 0x0046FAF8, bin_func), 4, "+"), 128, "=="),
+            },
+        )
+
+        assert bin_func.loops_dict_start_address[0x0046FAF8] == expected_loop

@@ -264,15 +264,19 @@ class Engine:
 
         if self.current_inst in self.bin_func.loops_dict_start_address:
             for blk in self.bin_func.loops_dict[self.current_inst].blocks:
-                for op in self.bin_func.opcodes[blk].ops:
-                    if op.output is None:
-                        continue
+                current_blk = self.bin_func.blocks_dict[blk]
+                current_address = current_blk.start
+                while current_address < current_blk.end:
+                    for op in self.bin_func.opcodes[current_address].ops:
+                        if op.output is None:
+                            continue
 
-                    space = op.output.space.name
-                    if space != "register":
-                        continue
+                        space = op.output.space.name
+                        if space != "register":
+                            continue
 
-                    self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
+                        self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
+                    current_address += self.bin_func.opcodes[current_address].bytes_size
 
         self.previous_marks = [self.current_inst]
 
