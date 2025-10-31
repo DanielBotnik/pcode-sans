@@ -44,3 +44,14 @@ class TestLoops:
         )
 
         assert bin_func.loops_dict_start_address[0x0046FAF8] == expected_loop
+
+    def test_func_start_with_loop_doesnt_visit_block_twice(self):
+        # sshd binary `crypto_sign_ed25519_ref_fe25519_add` function
+        CODE = b"\x00\x00\x10!$\x07\x00\x80\x00\xc2\x18!\x00\xa2H!\x00\x82@!\x8cc\x00\x00$B\x00\x04\x8d)\x00\x00\x00i\x18!\x14G\xff\xf8\xad\x03\x00\x00\x08\x11\xbd\xbc\x00\x00\x00\x00"
+        ADDR = 0x0046FAF0
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+
+        blocks = list(bin_func.code_flow_grpah.traverse())
+        assert len(blocks) == len(set(blocks))

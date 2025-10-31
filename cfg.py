@@ -91,7 +91,7 @@ class CodeFlowGraph:
                     queue.append(vid)
 
             # Check if all parents have been visited
-            if all(p in visited for p in parents):
+            elif all(p in visited for p in parents):
                 addr = g.vs[vid]["addr"]
                 yield addr
                 visited.add(vid)
