@@ -319,9 +319,11 @@ class Engine:
 
                 signed_offset = ctypes.c_int32(right).value
                 self.instructions_state[self.current_inst].stack[signed_offset] = val
-                self.memory_accesses.append(
-                    MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
-                )
+
+                if not isinstance(left, Register) or not left.offset == 116:
+                    self.memory_accesses.append(
+                        MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
+                    )
 
         else:
             print("nigga", space)
