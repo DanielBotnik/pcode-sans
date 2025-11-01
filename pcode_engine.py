@@ -19,38 +19,6 @@ from engine_types import (
 from typing import Any, Callable, Optional
 from frozendict import frozendict
 from binary_function import BinaryFunction, FunctionBlock
-import operator
-
-BITNESS_TO_MASK = {
-    32: 0xFFFFFFFF,
-    64: 0xFFFFFFFFFFFFFFFF,
-}
-
-PTR_SIZE = 32
-
-
-def eval_numeric_expression(left: int, right: int, op: str, res_size: int):
-    return OPS[op](left, right) & BITNESS_TO_MASK[res_size]
-
-
-OPS = {
-    "+": operator.add,
-    "-": operator.sub,
-    "x": operator.mul,  # 'x' is mul so it doesn't get confusing with '*'
-    "/": operator.floordiv,
-    "%": operator.mod,
-    "&": operator.and_,
-    "|": operator.or_,
-    "^": operator.xor,
-    "<<": operator.lshift,
-    ">>": operator.rshift,
-    "==": lambda a, b: int(operator.eq(a, b)),
-    "!=": lambda a, b: int(operator.ne(a, b)),
-    "<": lambda a, b: int(operator.lt(a, b)),
-    "<=": lambda a, b: int(operator.le(a, b)),
-    ">": lambda a, b: int(operator.gt(a, b)),
-    ">=": lambda a, b: int(operator.ge(a, b)),
-}
 
 
 class InstructionState:
@@ -99,7 +67,7 @@ class Engine:
     def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str, signed=False):
         left = self.handle_get(op.inputs[0])
         right = self.handle_get(op.inputs[1])
-        self.handle_put(op.output, self._handle_binop(left, right, op_symbol, signed))
+        self.handle_put(op.output, BinaryOp.create_binop(left, right, op_symbol, signed))
 
     def _init_handlers(self):
         self._handlers.update(
@@ -275,28 +243,6 @@ class Engine:
                     current_address += self.bin_func.opcodes[current_address].bytes_size
 
         self.previous_marks = [self.current_inst]
-
-    @staticmethod
-    def _handle_binop(left, right, op: str, signed=False):
-
-        if isinstance(left, int) and isinstance(right, int):
-            return eval_numeric_expression(left, right, op, PTR_SIZE)
-
-        elif isinstance(left, BinaryOp):
-            if left.op == op and op in ["+", "*", "&", "|"] and isinstance(left.right, int):
-                return BinaryOp(left.left, eval_numeric_expression(left.right, right, op, PTR_SIZE), op)
-            elif left.op in ["<", "<="] and right == 0:
-                if op == "!=":
-                    return BinaryOp(left.left, left.right, left.op, left.signed)
-                elif op == "==":
-                    return BinaryOp(left.left, left.right, left.op, left.signed).negate()
-            elif left.op == "^" and right == 1 and op == "<" and not signed:
-                return BinaryOp(left.left, left.right, "==")
-
-        elif isinstance(right, int) and right == 0 and op == "+":
-            return left
-
-        return BinaryOp(left, right, op, signed)
 
     def _handle_copy(self, op: pypcode.PcodeOp):
         self.handle_put(op.output, self.handle_get(op.inputs[0]))

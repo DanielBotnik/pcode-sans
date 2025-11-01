@@ -1,6 +1,8 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any, Mapping
+import operator
 
 from binary_function import BinaryFunction
 
@@ -52,6 +54,55 @@ class BinaryOp:
 
     def __repr__(self):
         return f"({repr_or_hexint(self.left)} {self.op} {repr_or_hexint(self.right)})"
+
+    @staticmethod
+    def _eval_numeric_expression(left: int, right: int, op: str):
+        return BinaryOp._INTEGER_OPS[op](left, right) & BinaryOp._BITNESS_TO_MASK[BinaryOp._PTR_SIZE]
+
+    _BITNESS_TO_MASK = {
+        32: 0xFFFFFFFF,
+        64: 0xFFFFFFFFFFFFFFFF,
+    }
+    _PTR_SIZE = 32
+    _INTEGER_OPS = {
+        "+": operator.add,
+        "-": operator.sub,
+        "x": operator.mul,  # 'x' is mul so it doesn't get confusing with '*'
+        "/": operator.floordiv,
+        "%": operator.mod,
+        "&": operator.and_,
+        "|": operator.or_,
+        "^": operator.xor,
+        "<<": operator.lshift,
+        ">>": operator.rshift,
+        "==": lambda a, b: int(operator.eq(a, b)),
+        "!=": lambda a, b: int(operator.ne(a, b)),
+        "<": lambda a, b: int(operator.lt(a, b)),
+        "<=": lambda a, b: int(operator.le(a, b)),
+        ">": lambda a, b: int(operator.gt(a, b)),
+        ">=": lambda a, b: int(operator.ge(a, b)),
+    }
+
+    @staticmethod
+    def create_binop(left: Any, right: Any, op: str, signed: bool = False) -> BinaryOp | int:
+        if isinstance(left, int) and isinstance(right, int):
+            return BinaryOp._eval_numeric_expression(left, right, op)
+
+        elif isinstance(left, BinaryOp):
+            if left.op == op and op in ["+", "*", "&", "|"] and isinstance(left.right, int):
+                return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
+            elif left.op in ["<", "<=", "==", "!=", ">", ">="] and right == 0:
+                if op == "!=":
+                    return BinaryOp(left.left, left.right, left.op, left.signed)
+                elif op == "==":
+                    return BinaryOp(left.left, left.right, left.op, left.signed).negate()
+            elif left.op == "^" and right == 1 and op == "<" and not signed:
+                return BinaryOp(left.left, left.right, "==")
+
+        elif isinstance(right, int) and right == 0 and op == "+":
+            return left
+
+        return BinaryOp(left, right, op, signed)
 
     def negate(self) -> "BinaryOp":
         neg_op_map = {
