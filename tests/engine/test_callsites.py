@@ -1,6 +1,6 @@
 from frozendict import frozendict
 from binary_function import BinaryFunction
-from engine_types import Arg, CallSite
+from engine_types import Arg, CallSite, UnaryOp
 from pcode_engine import Engine
 from project import Project
 
@@ -37,3 +37,21 @@ class TestCallSites:
             target=0x004E2370,
             args=frozendict({0: Arg(0), 1: Arg(1), 2: 4, 3: 0}),
         )
+
+    def test_indirect_branch_is_callsite(self):
+        # sshd binary `i2d_PKCS7_NDEF` function
+        CODE = b"<\x1c\x00_<\x06\x00^'\x9c'\xe0\x8f\x99\x9a \x03 \x00\x08$\xc6\xd2\x84"
+        ADDR = 0x004A1678
+        PKCS7_it = 0x005DD284
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(engine.callsites) == 1
+        expected_callsite = CallSite(
+            addr=0x004A1688,
+            target=UnaryOp(0x5EC200, "*"),
+            args=frozendict({0: Arg(0), 1: Arg(1), 2: PKCS7_it}),
+        )
+        assert expected_callsite in engine.callsites

@@ -239,12 +239,8 @@ class Engine:
                 )
 
                 self.instructions_state[self.current_inst] = common_instruction_state
-            except Exception as nig:
-                print(nig)
-                import ipdb
-
-                ipdb.set_trace()
-                print("a")
+            except Exception as e:
+                print(e)
 
         else:
             # TODO: care about diffrences
@@ -337,6 +333,12 @@ class Engine:
         self._handle_callind(op)
 
     def _create_callsite(self, target: Any) -> CallSite:
+
+        # TODO: do this better
+        if self.bin_func.project.context.language.id.startswith("MIPS:") and isinstance(target, BinaryOp):
+            if target.left == -0x2 and target.op == "&":
+                target = target.right
+
         args = {
             arg_num: self.instructions_state[self.current_inst].regs[reg]
             for arg_num, reg in self.bin_func.project.get_args_registers().items()
@@ -377,11 +379,6 @@ class Engine:
 
     def _handle_callind(self, op: pypcode.PcodeOp):
         target = self.handle_get(op.inputs[0])
-
-        # TODO: do this better
-        if self.bin_func.project.context.language.id.startswith("MIPS:") and isinstance(target, BinaryOp):
-            if target.left == -0x2 and target.op == "&":
-                target = target.right
 
         self._create_callsite(target)
 
