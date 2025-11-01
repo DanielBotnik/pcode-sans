@@ -138,10 +138,11 @@ class TestEngineMIPSBE:
         bin_func = BinaryFunction(ADDR, CODE, project)
         engine = Engine(bin_func)
 
-        assert engine.conditional_sites[0] == ConditionalSite(0x422DA8, BinaryOp(Arg(0), 9, "<"), 2, 0x422DAC)
+        assert engine.conditional_sites[0] == ConditionalSite(0x422DA8, BinaryOp(Arg(0), 9, ">="), 2, 0x422DAC)
+
         assert engine.instructions_state[0x00422DA8].regs[
             project.context.registers["v0"].offset
-        ] == ConditionalExpression(engine.conditional_sites[0], Arg(0), 8)
+        ] == ConditionalExpression(engine.conditional_sites[0], 8, Arg(0))
 
     def test_conditional_site_with_memory_value(self):
         # sshd binary `handle_is_ok` function

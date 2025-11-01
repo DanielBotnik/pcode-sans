@@ -535,8 +535,8 @@ class Engine:
             else:
                 self.instructions_state[self.current_inst].regs[output.offset] = ConditionalExpression(
                     self.__conditional_move_condition,
-                    val,
                     self.instructions_state[self.current_inst].regs[output.offset],
+                    val,
                 )
         elif space == "unique":
             self.instructions_state[self.current_inst].unique[output.offset] = val
