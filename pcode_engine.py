@@ -79,6 +79,7 @@ class Engine:
                 pypcode.OpCode.INT_LEFT: partial(self._handle_binary_op, op_symbol="<<"),
                 pypcode.OpCode.INT_RIGHT: partial(self._handle_binary_op, op_symbol=">>"),
                 pypcode.OpCode.INT_AND: partial(self._handle_binary_op, op_symbol="&"),
+                pypcode.OpCode.INT_SUB: partial(self._handle_binary_op, op_symbol="-"),
                 pypcode.OpCode.INT_XOR: partial(self._handle_binary_op, op_symbol="^"),
                 pypcode.OpCode.INT_OR: partial(self._handle_binary_op, op_symbol="|"),
                 # Binary Conditional Operations
