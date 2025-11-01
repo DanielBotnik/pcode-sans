@@ -67,7 +67,7 @@ class BinaryOp:
     _INTEGER_OPS = {
         "+": operator.add,
         "-": operator.sub,
-        "x": operator.mul,  # 'x' is mul so it doesn't get confusing with '*'
+        "*": operator.mul,
         "/": operator.floordiv,
         "%": operator.mod,
         "&": operator.and_,
@@ -99,7 +99,7 @@ class BinaryOp:
             elif left.op == "^" and right == 1 and op == "<" and not signed:
                 return BinaryOp(left.left, left.right, "==")
 
-        elif isinstance(right, int) and right == 0 and op == "+":
+        elif isinstance(right, int) and right == 0 and op in ["+", "-"]:
             return left
 
         return BinaryOp(left, right, op, signed)
