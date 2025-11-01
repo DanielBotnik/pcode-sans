@@ -28,3 +28,21 @@ class TestMemoryAccess:
             stored_value=1,
         )
         assert expected_access in engine.memory_accesses
+
+    def test_load_memory_access_sanity(self):
+        # sshd binary `PKCS7_get_attribute` function
+        CODE = b"\x08\x12\x8b\xeb\x8c\x84\x00\x18"
+        ADDR = 0x004A4EB8
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(engine.memory_accesses) == 1
+        expected_access = MemoryAccess(
+            addr=0x004A4EB8,
+            base=Arg(0),
+            offset=0x18,
+            access_type=MemoryAccessType.LOAD,
+        )
+        assert expected_access in engine.memory_accesses
