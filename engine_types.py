@@ -84,6 +84,7 @@ class BinaryOp:
     }
     _ASSOCIATIVE_OPS = {"+", "*", "&", "|", "^"}
     _COMPERISON_OPS = {"==", "!=", "<", "<=", ">", ">="}
+    _MONOID = {"+": 0, "*": 1, "|": 0, "^": 0, "-": 0}
 
     @staticmethod
     def create_binop(left: Any, right: Any, op: str, signed: bool = False) -> BinaryOp | int:
@@ -95,13 +96,13 @@ class BinaryOp:
                 return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
             elif left.op in BinaryOp._COMPERISON_OPS and right == 0:
                 if op == "!=":
-                    return BinaryOp(left.left, left.right, left.op, left.signed)
+                    return left
                 elif op == "==":
-                    return BinaryOp(left.left, left.right, left.op, left.signed).negate()
+                    return left.negate()
             elif left.op == "^" and right == 1 and op == "<" and not signed:
                 return BinaryOp(left.left, left.right, "==")
 
-        elif isinstance(right, int) and right == 0 and op in ["+", "-"]:
+        elif right == BinaryOp._MONOID.get(op, None):
             return left
 
         return BinaryOp(left, right, op, signed)
