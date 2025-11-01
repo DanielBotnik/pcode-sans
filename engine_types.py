@@ -83,6 +83,7 @@ class BinaryOp:
         ">=": lambda a, b: int(operator.ge(a, b)),
     }
     _ASSOCIATIVE_OPS = {"+", "*", "&", "|", "^"}
+    _COMPERISON_OPS = {"==", "!=", "<", "<=", ">", ">="}
 
     @staticmethod
     def create_binop(left: Any, right: Any, op: str, signed: bool = False) -> BinaryOp | int:
@@ -92,7 +93,7 @@ class BinaryOp:
         elif isinstance(left, BinaryOp):
             if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
                 return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
-            elif left.op in ["<", "<=", "==", "!=", ">", ">="] and right == 0:
+            elif left.op in BinaryOp._COMPERISON_OPS and right == 0:
                 if op == "!=":
                     return BinaryOp(left.left, left.right, left.op, left.signed)
                 elif op == "==":
