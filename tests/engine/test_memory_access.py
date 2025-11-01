@@ -46,3 +46,22 @@ class TestMemoryAccess:
             access_type=MemoryAccessType.LOAD,
         )
         assert expected_access in engine.memory_accesses
+
+    def test_store_memory_access_with_callsite_base(self):
+        # sshd binary `BN_new` function
+        CODE = b"<\x1c\x00_'\xbd\xff\xd8'\x9c'\xe0\xaf\xb0\x00 <\x10\x00Z$\x04\x00\x14\xaf\xbf\x00$\xaf\xbc\x00\x18&\x057\x08\x8f\x99\x82\xd4\x03 \xf8\t$\x06\x01\x10\x14@\x00\x0b\x8f\xbc\x00\x18$\x02\x01\x11\x8f\x99\x81\xec$\x04\x00\x03$\x05\x00q$\x06\x00A\xaf\xa2\x00\x10\x03 \xf8\t&\x077\x08\x08\x11\xe6~\x00\x00\x10!$\x03\x00\x01\xac@\x00\x04\xac@\x00\x0c\xac@\x00\x08\xacC\x00\x10\xac@\x00\x00\x8f\xbf\x00$\x8f\xb0\x00 \x03\xe0\x00\x08'\xbd\x00("
+        ADDR = 0x00479980
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(engine.memory_accesses) == 5
+
+        base = engine.callsites[0]
+        assert MemoryAccess(0x004799F4, base, 0, MemoryAccessType.STORE, 0) in engine.memory_accesses  # The main test
+
+        assert MemoryAccess(0x004799E4, base, 4, MemoryAccessType.STORE, 0) in engine.memory_accesses
+        assert MemoryAccess(0x004799EC, base, 8, MemoryAccessType.STORE, 0) in engine.memory_accesses
+        assert MemoryAccess(0x004799E8, base, 0xC, MemoryAccessType.STORE, 0) in engine.memory_accesses
+        assert MemoryAccess(0x004799F0, base, 0x10, MemoryAccessType.STORE, 1) in engine.memory_accesses

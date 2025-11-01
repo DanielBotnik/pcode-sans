@@ -270,6 +270,8 @@ class Engine:
                     self.memory_accesses.append(
                         MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
                     )
+            elif isinstance(offset, CallSite):
+                self.memory_accesses.append(MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.STORE, val))
 
         else:
             print("nigga", space)
