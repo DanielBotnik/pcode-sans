@@ -29,6 +29,7 @@ class InstructionState:
         self.stack: dict[int, Any] = {}
         self.last_callsite: Optional[CallSite] = None
         self.goto_state: dict[int, InstructionState] = dict()
+        self.used_arguments: set[int] = set()
 
     def copy(self) -> InstructionState:
         new_state = InstructionState()
@@ -37,6 +38,7 @@ class InstructionState:
         new_state.ram = self.ram.copy()
         new_state.stack = self.stack.copy()
         new_state.last_callsite = self.last_callsite
+        new_state.used_arguments = self.used_arguments
         return new_state
 
 
@@ -151,8 +153,10 @@ class Engine:
 
         if self.current_inst in self.bin_func.loops_dict_start_address:
             good_marks = []
+            loops = self.bin_func.loops_dict[self.current_inst]
             for mark in self.previous_marks:
-                if self.bin_func.blocks_dict[mark].start not in self.bin_func.loops_dict[self.current_inst].blocks:
+                # keep mark if it's NOT inside any of the loops starting at current_inst
+                if not any(self.bin_func.blocks_dict[mark].start in loop.blocks for loop in loops):
                     good_marks.append(mark)
             self.previous_marks = good_marks
 
@@ -229,20 +233,22 @@ class Engine:
             self.instructions_state[self.current_inst] = common_instruction_state
 
         if self.current_inst in self.bin_func.loops_dict_start_address:
-            for blk in self.bin_func.loops_dict[self.current_inst].blocks:
-                current_blk = self.bin_func.blocks_dict[blk]
-                current_address = current_blk.start
-                while current_address < current_blk.end:
-                    for op in self.bin_func.opcodes[current_address].ops:
-                        if op.output is None:
-                            continue
+            for loop in self.bin_func.loops_dict[self.current_inst]:
+                for blk in loop.blocks:
+                    current_blk = self.bin_func.blocks_dict[blk]
+                    current_address = current_blk.start
+                    while current_address < current_blk.end:
+                        for op in self.bin_func.opcodes[current_address].ops:
+                            if op.output is None:
+                                continue
 
-                        space = op.output.space.name
-                        if space != "register":
-                            continue
+                            space = op.output.space.name
+                            if space != "register":
+                                continue
 
-                        self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
-                    current_address += self.bin_func.opcodes[current_address].bytes_size
+                            self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
+                            self.instructions_state[self.current_inst].used_arguments.add(op.output.offset)
+                        current_address += self.bin_func.opcodes[current_address].bytes_size
 
         self.previous_marks = [self.current_inst]
 
@@ -349,12 +355,15 @@ class Engine:
         if goto_iftrue != 2:
             self.addr_to_codeflow_conditional_site[self.current_blk.start] = condsite
 
-        loop = self.bin_func.loops_dict.get(self.current_inst, None)
-        if loop is not None and isinstance(condition, BinaryOp):
-            if goto_iftrue not in loop.blocks:
-                loop.exit_conditions[self.current_inst] = condition
-            elif goto_iffalse not in loop.blocks:
-                loop.exit_conditions[self.current_inst] = condition.negate()
+        loops = self.bin_func.loops_dict.get(self.current_inst, None)
+        if loops is not None and isinstance(condition, BinaryOp):
+            for loop in loops:
+                if goto_iftrue not in loop.blocks:
+                    loop.exit_conditions[self.current_inst] = condition
+                    break
+                elif goto_iffalse not in loop.blocks:
+                    loop.exit_conditions[self.current_inst] = condition.negate()
+                    break
 
         return condsite
 
@@ -460,6 +469,7 @@ class Engine:
             if (
                 input.offset in self.bin_func.project.get_rev_args_registers()
                 and self.instructions_state[self.current_inst].last_callsite is None
+                and input.offset not in self.instructions_state[self.current_inst].used_arguments
             ):
                 res = Arg(self.bin_func.project.get_rev_args_registers()[input.offset])
             else:

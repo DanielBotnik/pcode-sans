@@ -35,8 +35,8 @@ class BinaryFunction:
         self.blocks_dict_start_address: dict[int, FunctionBlock] = {}
         self.return_blocks: set[FunctionBlock] = set()
 
-        self.loops_dict: dict[int, Loop] = dict()
-        self.loops_dict_start_address: dict[int, Loop] = dict()
+        self.loops_dict: dict[int, list[Loop]] = dict()
+        self.loops_dict_start_address: dict[int, list[Loop]] = dict()
 
         self.code_flow_grpah: CodeFlowGraph = CodeFlowGraph()
 
@@ -174,8 +174,15 @@ class BinaryFunction:
             loop = Loop(start=loop[0], blocks=set(loop))
             for blk_addr in loop.blocks:
                 for addr in range(blk_addr, self.blocks_dict[blk_addr].end + 1, self.opcodes[blk_addr].bytes_size):
-                    self.loops_dict[addr] = loop
-            self.loops_dict_start_address[loop.start] = loop
+                    if addr not in self.loops_dict:
+                        self.loops_dict[addr] = [loop]
+                    else:
+                        self.loops_dict[addr].append(loop)
+
+            if loop.start not in self.loops_dict_start_address:
+                self.loops_dict_start_address[loop.start] = [loop]
+            else:
+                self.loops_dict_start_address[loop.start].append(loop)
 
     def _next_address(self, current_address):
         return current_address + self.opcodes[current_address].bytes_size

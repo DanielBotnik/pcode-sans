@@ -59,7 +59,6 @@ class CodeFlowGraph:
         """
         g = self.graph
         cycles = self._get_loop_vertecies()
-        cycle_vertceis = {v for cycle in cycles for v in cycle}
         visited = set()
         queue = deque([0])  # start from vertex 0
 
@@ -72,9 +71,10 @@ class CodeFlowGraph:
 
             parents = g.predecessors(vid)
 
-            if any(vid == cycle[0] for cycle in cycles):  # vid is the first vertex in a cycle
+            current_cycles = [c for c in cycles if c[0] == vid]
+            if current_cycles:  # vid is the first vertex in a cycle
                 # Check if all non loop parents have been visited
-                if all(p in visited for p in parents if p not in cycle_vertceis):
+                if all(p in visited for p in parents if not any(p in c for c in current_cycles)):
                     addr = g.vs[vid]["addr"]
                     yield addr
                     visited.add(vid)
