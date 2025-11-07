@@ -104,6 +104,7 @@ class Engine:
                 # Unary Operations
                 pypcode.OpCode.INT_2COMP: self._handle_int_2comp,
                 pypcode.OpCode.BOOL_NEGATE: self._handle_bool_negate,
+                pypcode.OpCode.INT_NEGATE: self._handle_int_negate,
                 # Byte Operations
                 pypcode.OpCode.INT_SEXT: self._handle_int_sext,
                 pypcode.OpCode.INT_ZEXT: self._handle_int_zext,
@@ -399,6 +400,11 @@ class Engine:
         bool_expr: BinaryOp = self.handle_get(op.inputs[0])
 
         self.handle_put(op.output, bool_expr.negate())
+
+    def _handle_int_negate(self, op: pypcode.PcodeOp):
+        int_expr: BinaryOp = self.handle_get(op.inputs[0])
+
+        self.handle_put(op.output, UnaryOp(int_expr, "~"))
 
     def _handle_int_sext(self, op: pypcode.PcodeOp):
         # TODO: For now assuming X = sext(X)
