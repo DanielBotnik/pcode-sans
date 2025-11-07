@@ -104,6 +104,8 @@ class BinaryOp:
 
         elif right == BinaryOp._MONOID.get(op, None):
             return left
+        elif left == BinaryOp._MONOID.get(op, None):
+            return right
 
         return BinaryOp(left, right, op, signed)
 
