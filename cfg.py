@@ -137,16 +137,151 @@ class CodeFlowGraph:
         rotated so the vertex closest to 0 comes first in each loop.
         """
 
-        g = self.graph
-
         def rotate_cycle(cycle):
             # Find index of vertex closest to 0
-            distances = g.distances(0, cycle)[0]
+            distances = self.graph.distances(0, cycle)[0]
             min_idx = distances.index(min(distances))
 
             return tuple(cycle[min_idx:] + cycle[:min_idx])
 
-        return [rotate_cycle(cycle) for cycle in g.simple_cycles()]
+        loops = self.find_natural_loops(self.graph, 0)
+        return [rotate_cycle(loop) for loop in loops]
+
+    def get_dominators(self, graph, entry_node=0):
+        """
+        Calculates the full set of dominators for every node.
+        Uses igraph's native 'dominators()' which returns immediate dominators (idom).
+        """
+
+        idoms = graph.dominator(entry_node, mode="out")
+        doms = {}
+
+        # Build full dominator sets from the immediate dominator chain
+        # The root dominates itself
+        doms[entry_node] = {entry_node}
+
+        for node in range(graph.vcount()):
+            if node in doms:
+                continue
+
+            curr = node
+            chain = []
+
+            # Traverse up the dominator tree until we hit a known node (or root/-1)
+            while curr not in doms:
+                chain.append(curr)
+                if curr >= len(idoms):  # Safety
+                    doms[curr] = {curr}
+                    break
+                idom = idoms[curr]
+                if idom < 0 or idom == curr:  # Root or unreachable
+                    doms[curr] = {curr}
+                    break
+                curr = idom
+
+            # Reconstruct sets: Dom(u) = {u} U Dom(idom(u))
+            known_doms = doms[curr]
+            while chain:
+                child = chain.pop()
+                child_doms = known_doms.copy()
+                child_doms.add(child)
+                doms[child] = child_doms
+                known_doms = child_doms
+
+        return doms
+
+    # --- 2. Natural Loop Finder ---
+
+    def find_natural_loops(self, graph, entry_node=0):
+        """
+        Finds natural loops in the graph.
+
+        Strategy:
+        1. Identify back-edges (u -> v where v dominates u).
+        2. Group back-edges by header.
+        3. For each header:
+        a. Generate the 'Merged' loop (Union of all back-edges).
+            This represents the full loop structure (Outer Loop).
+        b. Generate individual loops for each back-edge.
+            This captures distinct Inner Loops.
+        4. Filter:
+        - If an individual loop is a subset of the Merged loop (same header)
+            AND it is 'nearly identical' (e.g., only missing 1 node),
+            we assume it is just the 'Outer Shell' and discard it.
+        - We keep individual loops that are significantly different (Inner Loops).
+        """
+        dominators = self.get_dominators(graph, entry_node)
+
+        # Step A: Identify all back-edges and group by header
+        back_edges_by_header = {}
+        for edge in graph.es:
+            u, v = edge.tuple  # u -> v
+            # Check if v dominates u (definition of a back-edge)
+            if v in dominators[u]:
+                if v not in back_edges_by_header:
+                    back_edges_by_header[v] = []
+                back_edges_by_header[v].append(u)
+
+        found_loops = []
+
+        # Helper to construct a loop body from a list of tails for a specific header
+        def construct_loop(header, tails):
+            loop_body = {header}
+            stack = list(tails)
+            # Add tails initially
+            for t in tails:
+                loop_body.add(t)
+
+            while stack:
+                current = stack.pop()
+                for pred in graph.predecessors(current):
+                    # Add predecessor if it's dominated by the header
+                    # and not yet in the body
+                    if pred not in loop_body and header in dominators[pred]:
+                        loop_body.add(pred)
+                        stack.append(pred)
+            return loop_body
+
+        # Step B: Generate loops for each header
+        for header, tails in back_edges_by_header.items():
+
+            # 1. Always generate and keep the Merged Loop (The Maximal Loop)
+            merged_loop_body = construct_loop(header, tails)
+            found_loops.append(sorted(list(merged_loop_body)))
+
+            # If there's only one back-edge, we are done for this header
+            if len(tails) <= 1:
+                continue
+
+            # 2. Check individual back-edges for Nested Inner Loops
+            for tail in tails:
+                single_loop_body = construct_loop(header, [tail])
+
+                # --- FILTERING LOGIC ---
+                # Compare Single Loop vs Merged Loop
+                # We only keep the Single Loop if it represents a DISTINCT sub-structure.
+                # If the Single Loop is "almost" the Merged Loop (e.g. diff <= 1 node),
+                # it is likely just the Outer Loop's main path, which is redundant.
+
+                diff_size = len(merged_loop_body) - len(single_loop_body)
+
+                # Heuristic: If difference is small (<=1 node), discard.
+                # If difference is large (>1), it implies there is a significant
+                # 'other' part of the loop (the inner loop) that this path excludes.
+                if diff_size > 1:
+                    found_loops.append(sorted(list(single_loop_body)))
+
+        # Step C: Global Deduplication
+        # (Just in case different headers produced identical sets, though rare in Natural Loops)
+        unique_loops = []
+        seen = set()
+        for loop in found_loops:
+            t_loop = tuple(loop)
+            if t_loop not in seen:
+                seen.add(t_loop)
+                unique_loops.append(loop)
+
+        return unique_loops
 
     @lru_cache
     def get_loops(self) -> list[list[int]]:

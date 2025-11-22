@@ -107,7 +107,7 @@ class TestLoops:
 
         loop2 = Loop(
             start=0x00572F24,
-            blocks={0x00572F24, 0x00572F50, 0x00572F58, 0x00572F6C, 0x00572F7C},
+            blocks={0x00572F24, 0x00572F48, 0x00572F50, 0x00572F58, 0x00572F6C, 0x00572F7C},
             exit_conditions={
                 0x00572F50: BinaryOp(MemoryAccess(0x00572F44, left_reg, 0, MemoryAccessType.LOAD), right_side, "=="),
                 0x00572F5C: BinaryOp(MemoryAccess(0x00572F58, left_reg, 1, MemoryAccessType.LOAD), right_side, "=="),
@@ -118,3 +118,106 @@ class TestLoops:
 
         assert loop1 in bin_func.loops_dict_start_address[0x00572F24]
         assert loop2 in bin_func.loops_dict_start_address[0x00572F24]
+
+    def test_loops_inside_loop(self):
+        # sshd binary `strstr` function
+        CODE = b"\x90\xa6\x00\x00\x10\xc0\x002\x00\x80\x10!$\x84\xff\xff$\x84\x00\x01\x90\x82\x00\x00P@\x00-\x00\x00\x10!TF\xff\xfc$\x84\x00\x01\x90\xaa\x00\x01\x11@\x00(\x00\x80\x10!\x90\x82\x00\x01\x10J\x00\x0e$\x83\x00\x01\x10F\xff\xfc\x00` !\x10@\x00!\x00\x00\x10!\x90b\x00\x01\x14F\x00\x03\x00\x00\x00\x00\x10\x00\xff\xf5$d\x00\x01\x10@\x00\x19$c\x00\x02\x10\x00\xff\xf4\x90\x82\x00\x02\x90g\x00\x01\x90\xa4\x00\x02\x14\xe4\x00\x0f$b\xff\xff$\xa8\x00\x02$i\x00\x01\x10\xe0\x00\x10\x00\x00\x00\x00\x91'\x00\x01\x91\x04\x00\x01\x14\xe4\x00\x07\x00\x00\x00\x00\x10\x80\x00\n%)\x00\x02\x91\x04\x00\x02\x91'\x00\x00\x10\xe4\xff\xf5%\x08\x00\x02\x10\x80\x00\x04\x00\x00\x00\x00\x10\x00\xff\xde\x90b\x00\x00\x00\x00\x10!\x03\xe0\x00\x08\x00\x00\x00\x00"
+        ADDR = 0x0056FD60
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(bin_func.loops_dict_start_address) == 4
+
+        first_loop = Loop(
+            start=0x0056FD74,
+            blocks={0x0056FD74, 0x0056FD80},
+            exit_conditions={
+                0x0056FD78: BinaryOp(
+                    MemoryAccess(0x0056FD74, Register(16, 0x0056FD74, bin_func), 0, MemoryAccessType.LOAD), 0, "=="
+                ),
+                0x0056FD80: BinaryOp(
+                    MemoryAccess(0x0056FD74, Register(16, 0x0056FD74, bin_func), 0, MemoryAccessType.LOAD),
+                    MemoryAccess(0x0056FD60, Arg(1), 0, MemoryAccessType.LOAD),
+                    "==",
+                ),
+            },
+        )
+
+        assert [first_loop] == bin_func.loops_dict_start_address[0x0056FD74]
+
+        t0_offset_1_access = MemoryAccess(0x0056FDF8, Register(32, 0x0056FDF8, bin_func), 1, MemoryAccessType.LOAD)
+        second_loop = Loop(
+            start=0x0056FDEC,
+            blocks={0x0056FDEC, 0x0056FDF4, 0x0056FE04, 0x0056FE0C},
+            exit_conditions={
+                0x0056FDEC: BinaryOp(Register(28, 0x0056FDEC, bin_func), 0, "=="),
+                0x0056FDFC: BinaryOp(
+                    MemoryAccess(0x0056FDF4, Register(36, 0x0056FDF4, bin_func), 1, MemoryAccessType.LOAD),
+                    t0_offset_1_access,
+                    "!=",
+                ),
+                0x0056FE04: BinaryOp(t0_offset_1_access, 0, "=="),
+                0x0056FE14: BinaryOp(
+                    MemoryAccess(0x0056FE10, Register(36, 0x0056FDF4, bin_func), 2, MemoryAccessType.LOAD),
+                    MemoryAccess(0x0056FE0C, Register(32, 0x0056FDF8, bin_func), 2, MemoryAccessType.LOAD),
+                    "!=",
+                ),
+            },
+        )
+
+        assert [second_loop] == bin_func.loops_dict_start_address[0x0056FDEC]
+
+        second_arg_deref = MemoryAccess(0x0056FD60, Arg(1), 0, MemoryAccessType.LOAD)
+
+        third_loop = Loop(
+            start=0x0056FDA0,
+            blocks={0x0056FDA0, 0x0056FDA8, 0x0056FDB0, 0x0056FDC4, 0x0056FDCC},
+            exit_conditions={
+                0x0056FDA0: BinaryOp(Register(8, 0x0056FDA0, bin_func), second_arg_deref, "=="),
+                0x0056FDA8: BinaryOp(Register(8, 0x0056FDA0, bin_func), 0, "=="),
+                0x0056FDB4: BinaryOp(
+                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0, bin_func), 1, MemoryAccessType.LOAD),
+                    second_arg_deref,
+                    "==",
+                ),
+                0x0056FDC4: BinaryOp(
+                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0, bin_func), 1, MemoryAccessType.LOAD), 0, "=="
+                ),
+            },
+        )
+
+        assert [third_loop][0] == bin_func.loops_dict_start_address[0x0056FDA0][0]
+
+        big_loop = Loop(
+            start=0x0056FD94,
+            blocks={
+                0x0056FD94,
+                0x0056FDD4,
+                0x0056FDE4,
+                0x0056FDEC,
+                0x0056FDF4,
+                0x0056FE04,
+                0x0056FE0C,
+                0x0056FE1C,
+                0x0056FE24,
+                0x0056FDA0,
+                0x0056FDA8,
+                0x0056FDB0,
+                0x0056FDBC,
+                0x0056FDC4,
+                0x0056FDCC,
+            },
+            exit_conditions={
+                0x0056FDEC: BinaryOp(Register(28, 0x0056FDEC, bin_func), 0, "=="),
+                0x0056FE04: BinaryOp(t0_offset_1_access, 0, "=="),
+                0x0056FDA8: BinaryOp(Register(8, 0x0056FDA0, bin_func), 0, "=="),
+                0x0056FDC4: BinaryOp(
+                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0, bin_func), 1, MemoryAccessType.LOAD), 0, "=="
+                ),
+                0x0056FE1C: BinaryOp(Register(16, 0x0056FE1C, bin_func), 0, "=="),
+            },
+        )
+
+        assert [big_loop] == bin_func.loops_dict_start_address[0x0056FD94]

@@ -154,9 +154,17 @@ class Engine:
         if self.current_inst in self.bin_func.loops_dict_start_address:
             good_marks = []
             loops = self.bin_func.loops_dict[self.current_inst]
+            loops_for_marks = loops.copy()
+
+            if len(loops) == 2 and loops[0].start != loops[1].start:
+                if loops[0].blocks & loops[1].blocks == loops[0].blocks:
+                    loops_for_marks = [loops[0]]
+                elif loops[0].blocks & loops[1].blocks == loops[1].blocks:
+                    loops_for_marks = [loops[1]]
+
             for mark in self.previous_marks:
                 # keep mark if it's NOT inside any of the loops starting at current_inst
-                if not any(self.bin_func.blocks_dict[mark].start in loop.blocks for loop in loops):
+                if not any(self.bin_func.blocks_dict[mark].start in loop.blocks for loop in loops_for_marks):
                     good_marks.append(mark)
             self.previous_marks = good_marks
 
@@ -175,21 +183,40 @@ class Engine:
             self.__clear_after_callsite(self.instructions_state[self.current_inst])
 
         elif len(self.previous_marks) == 2:
-            try:
-                blk_a = self.bin_func.blocks_dict[self.previous_marks[0]]
-                blk_b = self.bin_func.blocks_dict[self.previous_marks[1]]
+            blk_a = self.bin_func.blocks_dict[self.previous_marks[0]]
+            blk_b = self.bin_func.blocks_dict[self.previous_marks[1]]
 
-                x = self.instructions_state[self.previous_marks[0]]
-                if self.current_inst in x.goto_state:
-                    x = x.goto_state[self.current_inst]
-                y = self.instructions_state[self.previous_marks[1]]
-                if self.current_inst in y.goto_state:
-                    y = y.goto_state[self.current_inst]
-                self.__clear_after_callsite(x)
-                self.__clear_after_callsite(y)
+            x = self.instructions_state[self.previous_marks[0]]
+            if self.current_inst in x.goto_state:
+                x = x.goto_state[self.current_inst]
+            y = self.instructions_state[self.previous_marks[1]]
+            if self.current_inst in y.goto_state:
+                y = y.goto_state[self.current_inst]
+            self.__clear_after_callsite(x)
+            self.__clear_after_callsite(y)
 
-                common_ancestor_addr = self.bin_func.common_ancestor(blk_a.start, blk_b.start)
-                common_condsite = self.addr_to_codeflow_conditional_site[common_ancestor_addr]
+            common_ancestor_addr = self.bin_func.common_ancestor(blk_a.start, blk_b.start)
+            common_condsite = self.addr_to_codeflow_conditional_site.get(common_ancestor_addr, None)
+
+            if common_condsite is None:
+                common_instruction_state = InstructionState()
+
+                previous_instruction_states = [self.instructions_state[addr] for addr in self.previous_marks]
+                for reg in set.intersection(*(set(s.regs.keys()) for s in previous_instruction_states)):
+                    common_instruction_state.regs[reg] = previous_instruction_states[0].regs[reg]
+                for unique in set.intersection(*(set(s.unique.keys()) for s in previous_instruction_states)):
+                    common_instruction_state.unique[unique] = previous_instruction_states[0].unique[unique]
+                for addr in set.intersection(*(set(s.ram.keys()) for s in previous_instruction_states)):
+                    common_instruction_state.ram[addr] = previous_instruction_states[0].ram[addr]
+                for addr in set.intersection(*(set(s.stack.keys()) for s in previous_instruction_states)):
+                    common_instruction_state.stack[addr] = previous_instruction_states[0].stack[addr]
+
+                common_instruction_state.used_arguments = set.union(
+                    *[p.used_arguments for p in previous_instruction_states]
+                )
+
+                self.instructions_state[self.current_inst] = common_instruction_state
+            else:
 
                 iftrue_state, iffalse_state = None, None
 
@@ -211,24 +238,28 @@ class Engine:
                 common_instruction_state.stack = self.__merge_dicts(
                     x.stack, y.stack, common_condsite, iftrue_state.stack, iffalse_state.stack
                 )
+                common_instruction_state.used_arguments = set.union(x.used_arguments, y.used_arguments)
 
                 self.instructions_state[self.current_inst] = common_instruction_state
-            except Exception as e:
-                print(e)
 
         else:
-            # TODO: care about diffrences
+            # TODO: care about diffrences, now even more...
             common_instruction_state = InstructionState()
 
             previous_instruction_states = [self.instructions_state[addr] for addr in self.previous_marks]
             for reg in set.intersection(*(set(s.regs.keys()) for s in previous_instruction_states)):
-                common_instruction_state.regs[reg] = previous_instruction_states[0].regs[reg]
+                if all(p.regs[reg] == previous_instruction_states[0].regs[reg] for p in previous_instruction_states):
+                    common_instruction_state.regs[reg] = previous_instruction_states[0].regs[reg]
             for unique in set.intersection(*(set(s.unique.keys()) for s in previous_instruction_states)):
                 common_instruction_state.unique[unique] = previous_instruction_states[0].unique[unique]
             for addr in set.intersection(*(set(s.ram.keys()) for s in previous_instruction_states)):
                 common_instruction_state.ram[addr] = previous_instruction_states[0].ram[addr]
             for addr in set.intersection(*(set(s.stack.keys()) for s in previous_instruction_states)):
                 common_instruction_state.stack[addr] = previous_instruction_states[0].stack[addr]
+
+            common_instruction_state.used_arguments = set.union(
+                *[p.used_arguments for p in previous_instruction_states]
+            )
 
             self.instructions_state[self.current_inst] = common_instruction_state
 
@@ -360,10 +391,8 @@ class Engine:
             for loop in loops:
                 if goto_iftrue not in loop.blocks:
                     loop.exit_conditions[self.current_inst] = condition
-                    break
                 elif goto_iffalse not in loop.blocks:
                     loop.exit_conditions[self.current_inst] = condition.negate()
-                    break
 
         return condsite
 

@@ -5,7 +5,7 @@ description = "Short description of your project"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "igraph",
+    "igraph>=1.0.0",
     "pypcode",
     "frozendict",
 ]
