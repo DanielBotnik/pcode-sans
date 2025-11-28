@@ -121,10 +121,7 @@ class Engine:
         while current_address < blk.end:
             for op in self.bin_func.opcodes[current_address].ops:
                 handler = self._handlers.get(op.opcode, None)
-                if handler is not None:
-                    handler(op)
-                else:
-                    print(op.opcode)
+                handler(op)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
     def __clear_after_callsite(self, instruction_state: InstructionState) -> None:
