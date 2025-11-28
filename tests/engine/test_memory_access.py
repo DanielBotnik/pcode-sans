@@ -78,3 +78,21 @@ class TestMemoryAccess:
         base_access = MemoryAccess(0x00445BDC, Arg(0), 0, MemoryAccessType.LOAD)
         assert base_access in engine.memory_accesses
         assert MemoryAccess(0x00445BE0, base_access, 8, MemoryAccessType.STORE, Arg(1))
+
+    def test_store_memory_access_with_callsite_stored_value(self):
+        # sshd binary `cms_Data_create` function
+        CODE = b"<\x1c\x00_'\xbd\xff\xe0'\x9c'\xe0\xaf\xb0\x00\x18\xaf\xbf\x00\x1c\xaf\xbc\x00\x10\x0c\x14\xefS\x00\x00\x00\x00\x8f\xbc\x00\x10\x10@\x00\x08\x00@\x80!\x8f\x99\x93L\x03 \xf8\t$\x04\x00\x15\x00\x00(!\xae\x02\x00\x00\x0c\x14\xf0\xde\x02\x00 !\x8f\xbf\x00\x1c\x02\x00\x10!\x8f\xb0\x00\x18\x03\xe0\x00\x08'\xbd\x00 "
+        ADDR = 0x0053C444
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(engine.memory_accesses) == 1
+        assert engine.memory_accesses[0] == MemoryAccess(
+            0x0053C480,
+            CallSite(0x0053C45C, 0x53BD4C, args=frozendict({})),
+            0,
+            MemoryAccessType.STORE,
+            CallSite(0x0053C474, UnaryOp(0x5EBB2C, "*"), frozendict({0: 21})),
+        )
