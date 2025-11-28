@@ -1,6 +1,6 @@
 from frozendict import frozendict
 from binary_function import BinaryFunction
-from engine_types import Arg, CallSite, MemoryAccess, MemoryAccessType, UnaryOp
+from engine_types import Arg, CallSite, MemoryAccess, MemoryAccessType, Register, UnaryOp
 from pcode_engine import Engine
 from project import Project
 
@@ -95,4 +95,20 @@ class TestMemoryAccess:
             0,
             MemoryAccessType.STORE,
             CallSite(0x0053C474, UnaryOp(0x5EBB2C, "*"), frozendict({0: 21})),
+        )
+
+    def test_store_memory_access_with_register_as_base(self):
+        # sshd binary `ssh_dispatch_init` function
+        CODE = b"$\x82\x00\x10$\x84\x04\x0c\xacE\x00\x00$B\x00\x04TD\xff\xfe\xacE\x00\x00\x03\xe0\x00\x08\x00\x00\x00\x00"  #
+        ADDR = 0x0044F01C
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+        engine = Engine(bin_func)
+
+        assert len(engine.memory_accesses) == 2
+        assert MemoryAccess(0x0044F024, Arg(0), 0x10, MemoryAccessType.STORE, Arg(1)) in engine.memory_accesses
+        assert (
+            MemoryAccess(0x0044F02C, Register(8, 0x0044F028, bin_func), 4, MemoryAccessType.STORE, Arg(1))
+            in engine.memory_accesses
         )

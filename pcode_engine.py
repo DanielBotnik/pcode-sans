@@ -286,6 +286,7 @@ class Engine:
     def _handle_copy(self, op: pypcode.PcodeOp):
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
+    # TODO: refactor this when I am smarter.
     def _handle_store(self, op: pypcode.PcodeOp):
         space = op.inputs[0].getSpaceFromConst().name
         offset = self.handle_get(op.inputs[1])
@@ -299,7 +300,10 @@ class Engine:
                 left = offset.left
                 if isinstance(right, int) and isinstance(left, Register) and offset.op == "+":
                     if left.offset != 116:  # sp offset, also add address check
-                        raise RuntimeError("Supports only ram sp movements")
+                        self.memory_accesses.append(
+                            MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val)
+                        )
+                        return
 
                 signed_offset = ctypes.c_int32(right).value
                 self.instructions_state[self.current_inst].stack[signed_offset] = val
