@@ -68,6 +68,11 @@ class TestArithmeticBinaryOp:
         assert 20 == BinaryOp.create_binop(5, 4, "*")
         assert 5 == BinaryOp.create_binop(20, 4, "/")
 
+    def test_addition_with_binary_op(self):
+        assert BinaryOp.create_binop(BinaryOp(Arg(0), 5, "+"), Arg(0), "+") == BinaryOp(
+            BinaryOp(Arg(0), 5, "+"), Arg(0), "+"
+        )
+
 
 class TestBitwiseBinaryOp:
     def test_bitwise_operations_sanity(self):

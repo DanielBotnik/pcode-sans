@@ -91,7 +91,7 @@ class BinaryOp:
         if isinstance(left, int) and isinstance(right, int):
             return BinaryOp._eval_numeric_expression(left, right, op)
 
-        elif isinstance(left, BinaryOp):
+        elif isinstance(left, BinaryOp) and isinstance(right, int):
             if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
                 return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
             elif left.op in BinaryOp._COMPERISON_OPS and right == 0:
