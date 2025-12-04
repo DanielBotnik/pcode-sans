@@ -356,6 +356,10 @@ class Engine:
                 stack_argument_offset += 0x4
                 arg_num += 1
 
+            # TODO: this is mips only, make it generic
+            if arg_num > 4 and args[arg_num - 1] == gp_value:
+                del args[arg_num - 1]
+
         max_reg_arg = min(max(args.keys() if args else [0]), 4)
 
         for arg_num, _ in self.bin_func.project.get_args_registers().items():
