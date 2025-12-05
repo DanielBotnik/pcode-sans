@@ -11,6 +11,7 @@ from engine_types import (
     CallSite,
     ConditionalExpression,
     ConditionalSite,
+    LoopsDict,
     Register,
     MemoryAccess,
     MemoryAccessType,
@@ -19,6 +20,7 @@ from engine_types import (
 from typing import Any, Callable, Optional
 from frozendict import frozendict
 from binary_function import BinaryFunction, FunctionBlock
+from project import Project
 
 
 class InstructionState:
@@ -44,8 +46,9 @@ class InstructionState:
 
 class Engine:
 
-    def __init__(self, bin_func: BinaryFunction):
-        self.bin_func = bin_func
+    def __init__(self, start: int, code: bytes, project: Project):
+        self.project = project
+        self.bin_func = BinaryFunction(start, code, project)
         self.instructions_state: dict[int, InstructionState] = dict()
         self.current_inst: int = 0
         self.previous_marks: list[int] = list()
@@ -65,6 +68,14 @@ class Engine:
             parents = self.bin_func.code_flow_grpah.get_parnets(current_addr)
             self.previous_marks = [self.bin_func.blocks_dict[parent].last_instruction_addr for parent in parents]
             self._analyze_block(blk)
+
+    @property
+    def loops_dict_start_address(self) -> LoopsDict:
+        return self.bin_func.loops_dict_start_address
+
+    @property
+    def loops_dict(self) -> LoopsDict:
+        return self.bin_func.loops_dict
 
     def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str, signed=False):
         left = self.handle_get(op.inputs[0])
@@ -129,10 +140,10 @@ class Engine:
             return
 
         for reg in list(instruction_state.regs.keys()):
-            if reg not in self.bin_func.project.get_unaffected_registers():
+            if reg not in self.project.get_unaffected_registers():
                 del instruction_state.regs[reg]
 
-        instruction_state.regs[self.bin_func.project.get_ret_register()] = instruction_state.last_callsite
+        instruction_state.regs[self.project.get_ret_register()] = instruction_state.last_callsite
         instruction_state.last_callsite = None
 
     def __merge_dicts(self, x_dict, y_dict, condsite, iftrue, iffalse):
@@ -148,9 +159,9 @@ class Engine:
         self.__unfinished_condsite = None
         self.__conditional_move_condition = None
 
-        if self.current_inst in self.bin_func.loops_dict_start_address:
+        if self.current_inst in self.loops_dict_start_address:
             good_marks = []
-            loops = self.bin_func.loops_dict[self.current_inst]
+            loops = self.loops_dict[self.current_inst]
             loops_for_marks = loops.copy()
 
             if len(loops) == 2 and loops[0].start != loops[1].start:
@@ -260,8 +271,8 @@ class Engine:
 
             self.instructions_state[self.current_inst] = common_instruction_state
 
-        if self.current_inst in self.bin_func.loops_dict_start_address:
-            for loop in self.bin_func.loops_dict[self.current_inst]:
+        if self.current_inst in self.loops_dict_start_address:
+            for loop in self.loops_dict[self.current_inst]:
                 for blk in loop.blocks:
                     current_blk = self.bin_func.blocks_dict[blk]
                     current_address = current_blk.start
@@ -326,13 +337,13 @@ class Engine:
     def _create_callsite(self, target: Any) -> CallSite:
 
         # TODO: do this better
-        if self.bin_func.project.context.language.id.startswith("MIPS:") and isinstance(target, BinaryOp):
+        if self.project.context.language.id.startswith("MIPS:") and isinstance(target, BinaryOp):
             if target.left == -0x2 and target.op == "&":
                 target = target.right
 
         args = {
             arg_num: self.instructions_state[self.current_inst].regs[reg]
-            for arg_num, reg in self.bin_func.project.get_args_registers().items()
+            for arg_num, reg in self.project.get_args_registers().items()
             if reg in self.instructions_state[self.current_inst].regs
         }
 
@@ -362,7 +373,7 @@ class Engine:
 
         max_reg_arg = min(max(args.keys() if args else [0]), 4)
 
-        for arg_num, _ in self.bin_func.project.get_args_registers().items():
+        for arg_num, _ in self.project.get_args_registers().items():
             if arg_num not in args and arg_num < max_reg_arg:
                 args[arg_num] = Arg(arg_num)  # TODO: use handle_get, maybe its not Arg
 
@@ -391,7 +402,7 @@ class Engine:
         if goto_iftrue != 2:
             self.addr_to_codeflow_conditional_site[self.current_blk.start] = condsite
 
-        loops = self.bin_func.loops_dict.get(self.current_inst, None)
+        loops = self.loops_dict.get(self.current_inst, None)
         if loops is not None and isinstance(condition, BinaryOp):
             for loop in loops:
                 if goto_iftrue not in loop.blocks:
@@ -501,13 +512,13 @@ class Engine:
                 return reg
 
             if (
-                input.offset in self.bin_func.project.get_rev_args_registers()
+                input.offset in self.project.get_rev_args_registers()
                 and self.instructions_state[self.current_inst].last_callsite is None
                 and input.offset not in self.instructions_state[self.current_inst].used_arguments
             ):
-                res = Arg(self.bin_func.project.get_rev_args_registers()[input.offset])
+                res = Arg(self.project.get_rev_args_registers()[input.offset])
             else:
-                res = Register(input.offset, self.current_inst, self.bin_func)
+                res = Register(input.offset, self.current_inst, self.project)
             self.instructions_state[self.current_inst].regs[input.offset] = res
             return res
 

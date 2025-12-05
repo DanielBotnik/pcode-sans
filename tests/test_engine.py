@@ -21,8 +21,7 @@ class TestEngineMIPSEL:
         ADDR = 0x000009B4
 
         project = Project("MIPS:LE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         expected_conditional_sites = {
             ConditionalSite(0x9D8, BinaryOp(UnaryOp(0xEE0, "*"), 0, "!="), 0xA6C, 0x9E0),
@@ -42,7 +41,7 @@ class TestEngineMIPSEL:
             CallSite(
                 0xA34,
                 0xF3C,
-                frozendict({0: MemoryAccess(0xA34, Register(112, 0xA34, bin_func), 0, MemoryAccessType.LOAD)}),
+                frozendict({0: MemoryAccess(0xA34, Register(112, 0xA34, project), 0, MemoryAccessType.LOAD)}),
             ),
             CallSite(0xA64, 0xF2C, frozendict({0: 0xEE4, 1: BinaryOp(UnaryOp(0xF38, "*"), 1250, "+")})),
         }
@@ -57,8 +56,7 @@ class TestEngineMIPSBE:
         ADDR = 0x00403E7C
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         expected_result = ConditionalExpression(
             engine.addr_to_codeflow_conditional_site[0x00403EAC],
@@ -74,8 +72,7 @@ class TestEngineMIPSBE:
         ADDR = 0x0048C610
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert engine.callsites[1].args == frozendict({0: Arg(0), 1: Arg(1), 2: Arg(2), 3: Arg(3)})
 
@@ -85,8 +82,7 @@ class TestEngineMIPSBE:
         ADDR = 0x005601A0
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert MemoryAccess(0x005601C4, Arg(0), 0x38, MemoryAccessType.LOAD) in engine.memory_accesses
         assert MemoryAccess(0x005601D4, Arg(0), 0x44, MemoryAccessType.LOAD) in engine.memory_accesses
@@ -101,8 +97,7 @@ class TestEngineMIPSBE:
         ADDR = 0x004A3CA8
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert MemoryAccess(0x004A3D10, Arg(0), 0x14, MemoryAccessType.LOAD) in engine.memory_accesses
         assert MemoryAccess(0x004A3D4C, Arg(0), 0x10, MemoryAccessType.LOAD) in engine.memory_accesses
@@ -135,8 +130,7 @@ class TestEngineMIPSBE:
         ADDR = 0x00422D60
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert engine.conditional_sites[0] == ConditionalSite(0x422DA8, BinaryOp(Arg(0), 9, ">="), 2, 0x422DAC)
 
@@ -151,8 +145,7 @@ class TestEngineMIPSBE:
         ADDR = 0x00422C70
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.conditional_sites) == 2
         assert ConditionalSite(0x422C70, BinaryOp(Arg(0), 0, "<"), 0x422CAC, 0x422C78) in engine.conditional_sites
@@ -168,8 +161,7 @@ class TestEngineMIPSBE:
         ADDR = 0x0042795C
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         expected_inner_callsite = CallSite(
             0x00427978,
@@ -184,8 +176,8 @@ class TestEngineMIPSBE:
                     0: expected_inner_callsite,
                     1: 0xFFFF,
                     2: 4098,
-                    3: BinaryOp(Register(116, 0x00427960, bin_func), 0xFFFFFFF4, "+"),
-                    4: BinaryOp(Register(116, 0x00427960, bin_func), 0xFFFFFFF0, "+"),
+                    3: BinaryOp(Register(116, 0x00427960, project), 0xFFFFFFF4, "+"),
+                    4: BinaryOp(Register(116, 0x00427960, project), 0xFFFFFFF0, "+"),
                 }
             ),
         )

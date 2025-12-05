@@ -1,10 +1,13 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Mapping
+from typing import Any, Mapping, TypeAlias
 import operator
 
-from binary_function import BinaryFunction
+from binary_function import BinaryFunction, Loop
+from project import Project
+
+LoopsDict: TypeAlias = Mapping[int, list[Loop]]
 
 
 def repr_or_hexint(val: Any) -> str:
@@ -22,10 +25,10 @@ class RegisterBase:
 class Register(RegisterBase):
     offset: int
     address: int
-    bin_func: BinaryFunction
+    project: Project
 
     def __repr__(self):
-        return f"{{{self.bin_func.project.get_register_name(self.offset)}@{hex(self.address)}}}"
+        return f"{{{self.project.get_register_name(self.offset)}@{hex(self.address)}}}"
 
 
 @dataclass(frozen=True)

@@ -12,8 +12,7 @@ class TestCallSites:
         ADDR = 0x0048FA90
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.callsites) == 1
         assert engine.callsites[0] == CallSite(
@@ -28,8 +27,7 @@ class TestCallSites:
         ADDR = 0x004E3C84
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.callsites) == 1
         assert engine.callsites[0] == CallSite(
@@ -45,8 +43,7 @@ class TestCallSites:
         PKCS7_it = 0x005DD284
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.callsites) == 1
         expected_callsite = CallSite(
@@ -61,8 +58,7 @@ class TestCallSites:
         ADDR = 0x004A0390
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.callsites) == 1
         expected_callsite = CallSite(

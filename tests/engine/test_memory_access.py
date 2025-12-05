@@ -12,8 +12,7 @@ class TestMemoryAccess:
         ADDR = 0x004CCF2C
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.memory_accesses) == 1
         expected_access = MemoryAccess(
@@ -35,8 +34,7 @@ class TestMemoryAccess:
         ADDR = 0x004A4EB8
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.memory_accesses) == 1
         expected_access = MemoryAccess(
@@ -53,8 +51,7 @@ class TestMemoryAccess:
         ADDR = 0x00479980
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.memory_accesses) == 5
 
@@ -71,8 +68,7 @@ class TestMemoryAccess:
         ADDR = 0x00445BDC
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.memory_accesses) == 2
         base_access = MemoryAccess(0x00445BDC, Arg(0), 0, MemoryAccessType.LOAD)
@@ -85,8 +81,7 @@ class TestMemoryAccess:
         ADDR = 0x0053C444
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.memory_accesses) == 1
         assert engine.memory_accesses[0] == MemoryAccess(
@@ -103,12 +98,23 @@ class TestMemoryAccess:
         ADDR = 0x0044F01C
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
-        engine = Engine(bin_func)
+        engine = Engine(ADDR, CODE, project)
 
         assert len(engine.memory_accesses) == 2
         assert MemoryAccess(0x0044F024, Arg(0), 0x10, MemoryAccessType.STORE, Arg(1)) in engine.memory_accesses
         assert (
-            MemoryAccess(0x0044F02C, Register(8, 0x0044F028, bin_func), 4, MemoryAccessType.STORE, Arg(1))
+            MemoryAccess(0x0044F02C, Register(8, 0x0044F028, project), 4, MemoryAccessType.STORE, Arg(1))
             in engine.memory_accesses
         )
+
+    def test_x(self):
+        # UI_construct_prompt
+        CODE = b"\x3c\x1c\x00\x5f\x27\xbd\xff\xd0\x27\x9c\x27\xe0\xaf\xb0\x00\x20\x00\x80\x80\x21\xaf\xb2\x00\x28\x00\xa0\x90\x21\xaf\xb1\x00\x24\x00\xc0\x88\x21\xaf\xbc\x00\x18\xaf\xbf\x00\x2c\x8f\x99\x93\x60\x03\x20\xf8\x09\x8c\x84\x00\x10\x24\x04\x00\x1a\x8f\xbc\x00\x18\x14\x44\x00\x0e\x00\x00\x18\x21\x8e\x02\x00\x14\x02\x40\x30\x21\x8f\x99\x9b\x30\x02\x20\x38\x21\x8f\x85\xa3\x6c\x8c\x42\x00\x04\x8c\x44\x00\x04\x8c\x42\x00\x08\xaf\xa2\x00\x10\x24\x02\x00\x01\x03\x20\xf8\x09\xaf\xa2\x00\x14\x00\x40\x18\x21\x8f\xbf\x00\x2c\x00\x60\x10\x21\x8f\xb2\x00\x28\x8f\xb1\x00\x24\x8f\xb0\x00\x20\x03\xe0\x00\x08\x27\xbd\x00\x30"
+        ADDR = 0x005141B0
+
+        project = Project("MIPS:BE:32:default")
+        engine = Engine(ADDR, CODE, project)
+
+        import ipdb
+
+        ipdb.set_trace()

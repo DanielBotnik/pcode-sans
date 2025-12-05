@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from cfg import CodeFlowGraph
 
 if TYPE_CHECKING:
-    from engine_types import BinaryOp
+    from engine_types import BinaryOp, LoopsDict
 from project import Project
 
 from collections import deque
@@ -35,8 +35,8 @@ class BinaryFunction:
         self.blocks_dict_start_address: dict[int, FunctionBlock] = {}
         self.return_blocks: set[FunctionBlock] = set()
 
-        self.loops_dict: dict[int, list[Loop]] = dict()
-        self.loops_dict_start_address: dict[int, list[Loop]] = dict()
+        self.loops_dict: LoopsDict = dict()
+        self.loops_dict_start_address: LoopsDict = dict()
 
         self.code_flow_grpah: CodeFlowGraph = CodeFlowGraph()
 
