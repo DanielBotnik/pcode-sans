@@ -182,7 +182,7 @@ class MemoryAccess:
     def __eq__(self, other):
         if not isinstance(other, MemoryAccess):
             return False
-        return (  # TODO: addr might need to be compared too
+        return (
             self.base == other.base
             and self.offset == other.offset
             and self.access_type == other.access_type
