@@ -137,7 +137,6 @@ class BinaryFunction:
 
                         # Sometimes the next address is the jump address
                         # future `OpCode.BRANCH` will handle that case
-                        # TODO: How will this handle conditional sites
                         if branch_addr == self._next_address(current_address):
                             continue
 
