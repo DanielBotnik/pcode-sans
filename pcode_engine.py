@@ -425,7 +425,10 @@ class Engine:
     def _handle_cbranch(self, op: pypcode.PcodeOp):
         goto_iftrue = self.handle_get(op.inputs[0])
         goto_iffalse = self.bin_func._next_address(self.current_inst)
-        condition: BinaryOp | int = self.handle_get(op.inputs[1])  # TODO: handle int conditions
+        condition: BinaryOp | int = self.handle_get(op.inputs[1])
+
+        if isinstance(condition, int):  # Sometimes the result is known at analysis time, for example LL/SC instructions
+            return
 
         if goto_iftrue == 2:
             self.__conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
@@ -449,7 +452,11 @@ class Engine:
         self._create_callsite(target)
 
     def _handle_bool_negate(self, op: pypcode.PcodeOp):
-        bool_expr: BinaryOp = self.handle_get(op.inputs[0])
+        bool_expr: BinaryOp | int = self.handle_get(op.inputs[0])
+
+        if isinstance(bool_expr, int):
+            self.handle_put(op.output, int(not bool_expr))
+            return
 
         self.handle_put(op.output, bool_expr.negate())
 
