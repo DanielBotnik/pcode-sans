@@ -300,31 +300,30 @@ class Engine:
         offset = self.handle_get(op.inputs[1])
         val = self.handle_get(op.inputs[2])
 
-        if space == "ram":
-            if isinstance(offset, int):
-                self.instructions_state[self.current_inst].ram[offset] = val
-            elif isinstance(offset, BinaryOp):
-                right = offset.right
-                left = offset.left
-                if isinstance(right, int) and isinstance(left, Register) and offset.op == "+":
-                    if left.offset != self.project.arch_regs.stackpointer:  # sp offset, also add address check
-                        self.memory_accesses.append(
-                            MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val)
-                        )
-                        return
+        if space != "ram":
+            raise NotImplementedError(f"STORE to space '{space}' is not implemented yet.")
 
-                signed_offset = ctypes.c_int32(right).value
-                self.instructions_state[self.current_inst].stack[signed_offset] = val
-
-                if not isinstance(left, Register) or not left.offset == self.project.arch_regs.stackpointer:
+        if isinstance(offset, int):
+            self.instructions_state[self.current_inst].ram[offset] = val
+        elif isinstance(offset, BinaryOp):
+            right = offset.right
+            left = offset.left
+            if isinstance(right, int) and isinstance(left, Register) and offset.op == "+":
+                if left.offset != self.project.arch_regs.stackpointer:  # sp offset, also add address check
                     self.memory_accesses.append(
-                        MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
+                        MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val)
                     )
-            elif isinstance(offset, CallSite):
-                self.memory_accesses.append(MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.STORE, val))
+                    return
 
-        else:
-            print("nigga", space)
+            signed_offset = ctypes.c_int32(right).value
+            self.instructions_state[self.current_inst].stack[signed_offset] = val
+
+            if not isinstance(left, Register) or not left.offset == self.project.arch_regs.stackpointer:
+                self.memory_accesses.append(
+                    MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
+                )
+        elif isinstance(offset, CallSite):
+            self.memory_accesses.append(MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.STORE, val))
 
     def _handle_int_2comp(self, op: pypcode.PcodeOp):
         val = op.inputs[0].offset  # INT_2COMP is always int values.
@@ -455,7 +454,7 @@ class Engine:
         bool_expr: BinaryOp | int = self.handle_get(op.inputs[0])
 
         if isinstance(bool_expr, int):
-            self.handle_put(op.output, int(not bool_expr))
+            self._handle_int_negate(op)
             return
 
         self.handle_put(op.output, bool_expr.negate())
