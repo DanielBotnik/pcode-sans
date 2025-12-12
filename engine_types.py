@@ -28,7 +28,7 @@ class Register(RegisterBase):
     project: Project
 
     def __repr__(self):
-        return f"{{{self.project.get_register_name(self.offset)}@{hex(self.address)}}}"
+        return f"{{{self.project.arch_regs.names[self.offset]}@{hex(self.address)}}}"
 
 
 @dataclass(frozen=True)

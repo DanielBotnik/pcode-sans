@@ -140,10 +140,10 @@ class Engine:
             return
 
         for reg in list(instruction_state.regs.keys()):
-            if reg not in self.project.get_unaffected_registers():
+            if reg not in self.project.arch_regs.unaffected:
                 del instruction_state.regs[reg]
 
-        instruction_state.regs[self.project.get_ret_register()] = instruction_state.last_callsite
+        instruction_state.regs[self.project.arch_regs.ret] = instruction_state.last_callsite
         instruction_state.last_callsite = None
 
     def __merge_dicts(self, x_dict, y_dict, condsite, iftrue, iffalse):
@@ -307,7 +307,7 @@ class Engine:
                 right = offset.right
                 left = offset.left
                 if isinstance(right, int) and isinstance(left, Register) and offset.op == "+":
-                    if left.offset != 116:  # sp offset, also add address check
+                    if left.offset != self.project.arch_regs.stackpointer:  # sp offset, also add address check
                         self.memory_accesses.append(
                             MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val)
                         )
@@ -316,7 +316,7 @@ class Engine:
                 signed_offset = ctypes.c_int32(right).value
                 self.instructions_state[self.current_inst].stack[signed_offset] = val
 
-                if not isinstance(left, Register) or not left.offset == 116:
+                if not isinstance(left, Register) or not left.offset == self.project.arch_regs.stackpointer:
                     self.memory_accesses.append(
                         MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
                     )
@@ -343,11 +343,11 @@ class Engine:
 
         args = {
             arg_num: self.instructions_state[self.current_inst].regs[reg]
-            for arg_num, reg in self.project.get_args_registers().items()
+            for arg_num, reg in self.project.arch_regs.arguments.items()
             if reg in self.instructions_state[self.current_inst].regs
         }
 
-        current_stack = self.instructions_state[self.current_inst].regs.get(116, None)
+        current_stack = self.instructions_state[self.current_inst].regs.get(self.project.arch_regs.stackpointer, None)
         if current_stack is not None:
             stack_argument_offset = 0
             if isinstance(current_stack, BinaryOp):
@@ -373,7 +373,7 @@ class Engine:
 
         max_reg_arg = min(max(args.keys() if args else [0]), 4)
 
-        for arg_num, _ in self.project.get_args_registers().items():
+        for arg_num, _ in self.project.arch_regs.arguments.items():
             if arg_num not in args and arg_num < max_reg_arg:
                 args[arg_num] = Arg(arg_num)  # TODO: use handle_get, maybe its not Arg
 
@@ -491,7 +491,7 @@ class Engine:
                 if isinstance(offset, (int, UnaryOp)):
                     res = UnaryOp(offset, "*")
                 elif isinstance(offset, BinaryOp):
-                    if isinstance(offset.left, Register) and offset.left.offset == 116:
+                    if isinstance(offset.left, Register) and offset.left.offset == self.project.arch_regs.stackpointer:
                         pass  # TODO: Handle stack later
                     else:
                         res = MemoryAccess(self.current_inst, offset.left, offset.right, MemoryAccessType.LOAD)
@@ -512,11 +512,11 @@ class Engine:
                 return reg
 
             if (
-                input.offset in self.project.get_rev_args_registers()
+                input.offset in self.project.arch_regs.rev_arguments
                 and self.instructions_state[self.current_inst].last_callsite is None
                 and input.offset not in self.instructions_state[self.current_inst].used_arguments
             ):
-                res = Arg(self.project.get_rev_args_registers()[input.offset])
+                res = Arg(self.project.arch_regs.rev_arguments[input.offset])
             else:
                 res = Register(input.offset, self.current_inst, self.project)
             self.instructions_state[self.current_inst].regs[input.offset] = res

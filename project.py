@@ -1,72 +1,66 @@
 from functools import lru_cache
+from typing import Mapping
 import pypcode
+
+from dataclasses import dataclass
+
+
+@dataclass
+class ArchRegisters:
+    stackpointer: int
+    ret: int
+    arguments: Mapping[int, int]
+    unaffected: set[int]
+    rev_arguments: Mapping[int, int]
+    names: Mapping[int, str]
 
 
 class Project:
 
     def __init__(self, language: str | pypcode.ArchLanguage):
         self.context = pypcode.Context(language)
+        self.arch_regs = Project._create_arch_registers(self.context)
 
-    @lru_cache
-    def get_register_name(self, reg_offset: int) -> str:
-        for reg_name, varnode in self.context.registers.items():
-            if varnode.offset == reg_offset:
-                return reg_name
+    @staticmethod
+    def _create_arch_registers(context: pypcode.Context) -> ArchRegisters:
+        language = context.language
 
-        raise RuntimeError(f"Couldn't find reg with offset {reg_offset}")
+        def find_matching_cid(language, desired):
+            for cid in language.cspecs:
+                if cid[0] == desired:
+                    return cid
+            return None
 
-    @lru_cache
-    def get_ret_register(self) -> int:
-        cspec = self.context.language.cspecs[("default", "default")]
-        default_proto = cspec.find("default_proto")
-        prototype = default_proto.find("prototype")
+        cspec_id = (
+            find_matching_cid(language, "default") or find_matching_cid(language, "gcc") or list(language.cspecs)[0]
+        )
+        cspec = language.cspecs[cspec_id]
 
-        output = prototype.find("output")
+        sp_tag = cspec.find("stackpointer").attrib.get("register")
+        sp_off = context.registers[sp_tag].offset
 
-        for label in output.iterfind("pentry"):
+        for label in cspec.iterfind("prototype/output/pentry[register]"):
             if label.get("metatype") is not None:
                 continue
 
-            reg = label.find("register")
-            if reg is None:
-                continue
+            ret_off = context.registers[label.find("register").get("name")].offset
 
-            return self.context.registers[reg.get("name")].offset
-
-    @lru_cache
-    def get_args_registers(self) -> dict[int, int]:
-        cspec = self.context.language.cspecs[("default", "default")]
-        default_proto = cspec.find("default_proto")
-        prototype = default_proto.find("prototype")
         args = dict()
-
-        input_ = prototype.find("input")
-
-        for label in input_.iterfind("pentry"):
+        for label in cspec.iterfind("default_proto/prototype/input/pentry[register]"):
             if label.get("metatype") is not None:
                 continue
 
-            reg = label.find("register")
-            if reg is None:
-                continue
+            args[len(args)] = context.registers[label.find("register").get("name")].offset
 
-            args[len(args)] = self.context.registers[reg.get("name")].offset
+        unaffected = set()
+        for label in cspec.iterfind("default_proto/prototype/unaffected/register"):
+            unaffected.add(context.registers[label.get("name")].offset)
 
-        return args
-
-    @lru_cache
-    def get_rev_args_registers(self) -> dict[int, int]:
-        return {v: k for k, v in self.get_args_registers().items()}
-
-    @lru_cache
-    def get_unaffected_registers(self) -> set[int]:
-        cspec = self.context.language.cspecs[("default", "default")]
-        default_proto = cspec.find("default_proto")
-        prototype = default_proto.find("prototype")
-        regs = set()
-
-        unaffected = prototype.find("unaffected")
-        for label in unaffected.iterfind("register"):
-            regs.add(self.context.registers[label.get("name")].offset)
-
-        return regs
+        return ArchRegisters(
+            stackpointer=sp_off,
+            ret=ret_off,
+            arguments=args,
+            unaffected=unaffected,
+            rev_arguments={v: k for k, v in args.items()},
+            names={reg.offset: name for name, reg in context.registers.items()},
+        )
