@@ -12,6 +12,7 @@ class ArchRegisters:
     arguments: Mapping[int, int]
     unaffected: set[int]
     rev_arguments: Mapping[int, int]
+    stack_argument_offset: int
     does_isa_switches: bool
     names: Mapping[int, str]
 
@@ -53,6 +54,12 @@ class Project:
 
             args[len(args)] = context.registers[label.find("register").get("name")].offset
 
+        for label in cspec.iterfind("default_proto/prototype/input/pentry/addr"):
+            if label.get("space") != "stack":
+                continue
+
+            stack_argument_offset = int(label.get("offset"))
+
         unaffected = set()
         for label in cspec.iterfind("default_proto/prototype/unaffected/register"):
             unaffected.add(context.registers[label.get("name")].offset)
@@ -62,6 +69,7 @@ class Project:
             ret=ret_off,
             arguments=args,
             unaffected=unaffected,
+            stack_argument_offset=stack_argument_offset,
             does_isa_switches=("ISAModeSwitch" in context.registers),
             rev_arguments={v: k for k, v in args.items()},
             names={reg.offset: name for name, reg in context.registers.items()},

@@ -351,7 +351,7 @@ class Engine:
             if isinstance(current_stack, BinaryOp):
                 stack_argument_offset = ctypes.c_int32(current_stack.right).value
 
-            stack_argument_offset += 0x10
+            stack_argument_offset += self.project.arch_regs.stack_argument_offset
             arg_num = 4
 
             # TODO: this is mips only, make it generic
@@ -485,7 +485,7 @@ class Engine:
                     res = self.instructions_state[self.current_inst].stack.get(signed_value, None)
 
                     # TODO: Make works for all arches, not only mips
-                    if signed_value >= 0x10:
+                    if signed_value >= self.project.arch_regs.stack_argument_offset:
                         require_deref = False
                         res = Arg((signed_value) // 4)
 
