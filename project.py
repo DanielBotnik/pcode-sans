@@ -12,6 +12,7 @@ class ArchRegisters:
     arguments: Mapping[int, int]
     unaffected: set[int]
     rev_arguments: Mapping[int, int]
+    does_isa_switches: bool
     names: Mapping[int, str]
 
 
@@ -61,6 +62,7 @@ class Project:
             ret=ret_off,
             arguments=args,
             unaffected=unaffected,
+            does_isa_switches=("ISAModeSwitch" in context.registers),
             rev_arguments={v: k for k, v in args.items()},
             names={reg.offset: name for name, reg in context.registers.items()},
         )

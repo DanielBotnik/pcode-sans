@@ -336,10 +336,8 @@ class Engine:
 
     def _create_callsite(self, target: Any) -> CallSite:
 
-        # TODO: do this better
-        if self.project.context.language.id.startswith("MIPS:") and isinstance(target, BinaryOp):
-            if target.left == -0x2 and target.op == "&":
-                target = target.right
+        if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
+            target = target.right
 
         args = {
             arg_num: self.instructions_state[self.current_inst].regs[reg]
