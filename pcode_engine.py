@@ -298,7 +298,6 @@ class Engine:
     def _handle_copy(self, op: pypcode.PcodeOp):
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
-    # TODO: refactor this when I am smarter.
     def _handle_store(self, op: pypcode.PcodeOp):
         space = op.inputs[0].getSpaceFromConst().name
         offset = self.handle_get(op.inputs[1])
@@ -309,25 +308,25 @@ class Engine:
 
         if isinstance(offset, int):
             self.instructions_state[self.current_inst].ram[offset] = val
-        elif isinstance(offset, BinaryOp):
-            right = offset.right
-            left = offset.left
-            if isinstance(right, int) and isinstance(left, Register) and offset.op == "+":
-                if left.offset != self.project.arch_regs.stackpointer:  # sp offset, also add address check
-                    self.memory_accesses.append(
-                        MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val)
-                    )
-                    return
+            return
 
+        if isinstance(offset, (CallSite, Arg)):
+            self.memory_accesses.append(MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.STORE, val))
+            return
+
+        if not isinstance(offset, BinaryOp):
+            raise NotImplementedError(f"STORE with offset of type '{type(offset)}' is not implemented yet.")
+
+        right = offset.right
+        left = offset.left
+
+        if not isinstance(left, Register) or left.offset != self.project.arch_regs.stackpointer:
+            self.memory_accesses.append(MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val))
+            return
+
+        if isinstance(right, int) and offset.op == "+":
             signed_offset = ctypes.c_int32(right).value
             self.instructions_state[self.current_inst].stack[signed_offset] = val
-
-            if not isinstance(left, Register) or not left.offset == self.project.arch_regs.stackpointer:
-                self.memory_accesses.append(
-                    MemoryAccess(self.current_inst, left, signed_offset, MemoryAccessType.STORE, val)
-                )
-        elif isinstance(offset, CallSite):
-            self.memory_accesses.append(MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.STORE, val))
 
     def _handle_int_2comp(self, op: pypcode.PcodeOp):
         val = op.inputs[0].offset  # INT_2COMP is always int values.
@@ -435,6 +434,9 @@ class Engine:
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
     def _handle_load(self, op: pypcode.PcodeOp):
+        arch = self.project.arch_regs
+        state = self.instructions_state[self.current_inst]
+
         space = op.inputs[0].getSpaceFromConst().name
         offset = self.handle_get(op.inputs[1])
 
@@ -447,10 +449,10 @@ class Engine:
                     # todo: Add struct member access
 
                     signed_value = ctypes.c_int32(offset.right).value
-                    res = self.instructions_state[self.current_inst].stack.get(signed_value, None)
+                    res = state.stack.get(signed_value, None)
 
                     # TODO: Make works for all arches, not only mips
-                    if signed_value >= self.project.arch_regs.stack_argument_offset:
+                    if signed_value >= arch.stack_argument_offset:
                         require_deref = False
                         res = Arg((signed_value) // 4)
 
@@ -461,7 +463,7 @@ class Engine:
                 if isinstance(offset, (int, UnaryOp)):
                     res = UnaryOp(offset, "*")
                 elif isinstance(offset, BinaryOp):
-                    if isinstance(offset.left, Register) and offset.left.offset == self.project.arch_regs.stackpointer:
+                    if isinstance(offset.left, Register) and offset.left.offset == arch.stackpointer:
                         pass  # TODO: Handle stack later
                     else:
                         res = MemoryAccess(self.current_inst, offset.left, offset.right, MemoryAccessType.LOAD)

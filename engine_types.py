@@ -17,12 +17,8 @@ def repr_or_hexint(val: Any) -> str:
     return repr(val)
 
 
-class RegisterBase:
-    pass
-
-
 @dataclass(frozen=True)
-class Register(RegisterBase):
+class Register:
     offset: int
     address: int
     project: Project
@@ -32,7 +28,7 @@ class Register(RegisterBase):
 
 
 @dataclass(frozen=True)
-class Arg(RegisterBase):
+class Arg:
     index: int
 
     def __repr__(self):
