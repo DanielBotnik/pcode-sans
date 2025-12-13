@@ -345,7 +345,7 @@ class Engine:
         }
 
         current_stack = self.instructions_state[self.current_inst].regs.get(self.project.arch_regs.stackpointer, None)
-        if current_stack is not None:
+        if current_stack is not None and (len(args) == len(self.project.arch_regs.arguments) or len(args) == 0):
             stack_argument_offset = 0
             if isinstance(current_stack, BinaryOp):
                 stack_argument_offset = ctypes.c_int32(current_stack.right).value
@@ -357,11 +357,6 @@ class Engine:
                 args[arg_num] = self.instructions_state[self.current_inst].stack[stack_argument_offset]
                 stack_argument_offset += 0x4
                 arg_num += 1
-
-            # TODO: this is mips only, make it generic
-            gp_value = self.instructions_state[self.current_inst].regs.get(112, None)
-            if arg_num > 4 and args[arg_num - 1] == gp_value:
-                del args[arg_num - 1]
 
         max_reg_arg = min(max(args.keys() if args else [0]), 4)
 

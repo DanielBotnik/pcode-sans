@@ -86,7 +86,8 @@ class TestMemoryAccess:
         assert len(engine.memory_accesses) == 1
         assert engine.memory_accesses[0] == MemoryAccess(
             0x0053C480,
-            CallSite(0x0053C45C, 0x53BD4C, args=frozendict({})),
+            # The base is incorrect due to guessing arguments from caller side is imperfect
+            CallSite(0x0053C45C, 0x53BD4C, args=frozendict({0: Arg(0), 1: Arg(1), 2: Arg(2), 3: Arg(3), 4: 0x5F27E0})),
             0,
             MemoryAccessType.STORE,
             CallSite(0x0053C474, UnaryOp(0x5EBB2C, "*"), frozendict({0: 21})),
