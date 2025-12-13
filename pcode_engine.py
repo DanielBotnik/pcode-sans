@@ -334,39 +334,11 @@ class Engine:
         self._handle_callind(op)
 
     def _create_callsite(self, target: Any) -> CallSite:
+        resolved_target = self.__extract_target(target)
+        args = self.__collect_call_arguments()
 
-        if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
-            target = target.right
-
-        args = {
-            arg_num: self.instructions_state[self.current_inst].regs[reg]
-            for arg_num, reg in self.project.arch_regs.arguments.items()
-            if reg in self.instructions_state[self.current_inst].regs
-        }
-
-        current_stack = self.instructions_state[self.current_inst].regs.get(self.project.arch_regs.stackpointer, None)
-        if current_stack is not None and (len(args) == len(self.project.arch_regs.arguments) or len(args) == 0):
-            stack_argument_offset = 0
-            if isinstance(current_stack, BinaryOp):
-                stack_argument_offset = ctypes.c_int32(current_stack.right).value
-
-            stack_argument_offset += self.project.arch_regs.stack_argument_offset
-            arg_num = 4
-
-            while stack_argument_offset in self.instructions_state[self.current_inst].stack:
-                args[arg_num] = self.instructions_state[self.current_inst].stack[stack_argument_offset]
-                stack_argument_offset += 0x4
-                arg_num += 1
-
-        max_reg_arg = min(max(args.keys() if args else [0]), 4)
-
-        for arg_num, _ in self.project.arch_regs.arguments.items():
-            if arg_num not in args and arg_num < max_reg_arg:
-                args[arg_num] = Arg(arg_num)  # TODO: use handle_get, maybe its not Arg
-
-        callsite = CallSite(self.current_inst, target, frozendict(args))
-        self.callsites.append(callsite)
-        self.instructions_state[self.current_inst].last_callsite = callsite
+        callsite = CallSite(self.current_inst, resolved_target, frozendict(args))
+        self.__register_callsite(callsite)
 
         return callsite
 
@@ -543,6 +515,55 @@ class Engine:
             self.instructions_state[self.current_inst].unique[output.offset] = val
         else:
             raise RuntimeError(f"Unexpected space in handle_put: {space}")
+
+    def __extract_target(self, target: Any) -> Any:
+        if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
+            target = target.right
+
+        return target
+
+    def __register_callsite(self, callsite: CallSite) -> None:
+        self.callsites.append(callsite)
+        self.instructions_state[self.current_inst].last_callsite = callsite
+
+    def __collect_call_arguments(self) -> dict[int, Any]:
+        state = self.instructions_state[self.current_inst]
+        arch = self.project.arch_regs
+
+        args = {arg_num: state.regs[reg] for arg_num, reg in arch.arguments.items() if reg in state.regs}
+
+        current_stack = state.regs.get(arch.stackpointer, None)
+        if current_stack is not None and (len(args) == len(arch.arguments) or len(args) == 0):
+            if not isinstance(current_stack, BinaryOp):
+                raise ValueError("Current stack pointer is expected to be a BinaryOp")
+
+            stack_argument_offset = ctypes.c_int32(current_stack.right + arch.stack_argument_offset).value
+            arg_num = len(arch.arguments)
+
+            while stack_argument_offset in state.stack:
+                args[arg_num] = state.stack[stack_argument_offset]
+                stack_argument_offset += 0x4
+                arg_num += 1
+
+        max_reg_arg = min(max(args.keys(), default=0), len(arch.arguments))
+
+        for arg_num, _ in arch.arguments.items():
+            if arg_num not in args and arg_num < max_reg_arg:
+                args[arg_num] = self.handle_get(FakeVarnode(FakeAddrSpace("register"), arch.arguments[arg_num], 4))
+
+        return args
+
+
+class FakeAddrSpace:
+    def __init__(self, name: str):
+        self.name = name
+
+
+class FakeVarnode:
+    def __init__(self, space: FakeAddrSpace, offset: int, size: int):
+        self.space = space
+        self.offset = offset
+        self.size = size
 
 
 @dataclass
