@@ -353,18 +353,13 @@ class Engine:
             stack_argument_offset += self.project.arch_regs.stack_argument_offset
             arg_num = 4
 
-            # TODO: this is mips only, make it generic
-            gp_value = self.instructions_state[self.current_inst].regs.get(112, None)
-            if gp_value is not None and stack_argument_offset in self.instructions_state[self.current_inst].stack:
-                if self.instructions_state[self.current_inst].stack[stack_argument_offset] == gp_value:
-                    stack_argument_offset += 0x4
-
             while stack_argument_offset in self.instructions_state[self.current_inst].stack:
                 args[arg_num] = self.instructions_state[self.current_inst].stack[stack_argument_offset]
                 stack_argument_offset += 0x4
                 arg_num += 1
 
             # TODO: this is mips only, make it generic
+            gp_value = self.instructions_state[self.current_inst].regs.get(112, None)
             if arg_num > 4 and args[arg_num - 1] == gp_value:
                 del args[arg_num - 1]
 
