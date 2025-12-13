@@ -52,12 +52,12 @@ class Engine:
         self.instructions_state: dict[int, InstructionState] = dict()
         self.current_inst: int = 0
         self.previous_marks: list[int] = list()
-        self._handlers: dict[pypcode.OpCode, Callable[[Engine, pypcode.PcodeOp], None]] = {}
+        self._handlers: dict[pypcode.OpCode, Callable[[pypcode.PcodeOp], None]] = {}
         self.callsites: list[CallSite] = []
         self.conditional_sites: list[ConditionalSite] = []
         self.memory_accesses: list[MemoryAccess] = []
         self.addr_to_codeflow_conditional_site: dict[int, ConditionalSite] = {}
-        self.current_blk: FunctionBlock = None
+        self.current_blk: FunctionBlock = FunctionBlock(0, self.bin_func)  # Temporal initialization
         self.__unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
         self.__conditional_move_condition: Optional[ConditionalSite] = None
 
@@ -80,7 +80,12 @@ class Engine:
     def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str, signed=False):
         left = self.handle_get(op.inputs[0])
         right = self.handle_get(op.inputs[1])
-        self.handle_put(op.output, BinaryOp.create_binop(left, right, op_symbol, signed))
+        output = op.output
+
+        if output is None:
+            raise ValueError("Output of binary operation is None")
+
+        self.handle_put(output, BinaryOp.create_binop(left, right, op_symbol, signed))
 
     def _init_handlers(self):
         self._handlers.update(
@@ -131,8 +136,7 @@ class Engine:
 
         while current_address < blk.end:
             for op in self.bin_func.opcodes[current_address].ops:
-                handler = self._handlers.get(op.opcode, None)
-                handler(op)
+                self._handlers[op.opcode](op)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
     def __clear_after_callsite(self, instruction_state: InstructionState) -> None:
@@ -469,7 +473,7 @@ class Engine:
 
         self.handle_put(op.output, res)
 
-    def handle_get(self, input: pypcode.Varnode) -> Any:
+    def handle_get(self, input: pypcode.Varnode | FakeVarnode) -> Any:
         space = input.space.name
 
         if space == "register":
@@ -477,6 +481,7 @@ class Engine:
             if reg is not None:
                 return reg
 
+            res: Register | Arg
             if (
                 input.offset in self.project.arch_regs.rev_arguments
                 and self.instructions_state[self.current_inst].last_callsite is None
@@ -492,14 +497,15 @@ class Engine:
             return input.offset
 
         elif space == "unique":
-            res = self.instructions_state[self.current_inst].unique.get(input.offset)
-            if res is not None:
-                return res
+            return self.instructions_state[self.current_inst].unique.get(input.offset)
 
         elif space == "ram":
             return input.offset
 
-    def handle_put(self, output: pypcode.Varnode, val: Any):
+    def handle_put(self, output: pypcode.Varnode | None, val: Any):
+        if output is None:
+            raise ValueError("Output varnode is None in handle_put")
+
         space = output.space.name
 
         if space == "register":

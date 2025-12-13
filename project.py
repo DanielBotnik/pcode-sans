@@ -38,31 +38,59 @@ class Project:
         )
         cspec = language.cspecs[cspec_id]
 
-        sp_tag = cspec.find("stackpointer").attrib.get("register")
+        stackpointer_label = cspec.find("stackpointer")
+        if stackpointer_label is None:
+            raise ValueError("Could not find stackpointer label in cspec")
+        sp_tag = stackpointer_label.get("register")
+        if sp_tag is None:
+            raise ValueError("Could not find stackpointer register in cspec")
         sp_off = context.registers[sp_tag].offset
 
         for label in cspec.iterfind("prototype/output/pentry[register]"):
             if label.get("metatype") is not None:
                 continue
 
-            ret_off = context.registers[label.find("register").get("name")].offset
+            reg_label = label.find("register")
+            if reg_label is None:
+                continue
 
-        args = dict()
+            reg_name = reg_label.get("name")
+            if reg_name is None:
+                continue
+
+            ret_off = context.registers[reg_name].offset
+
+        args: dict[int, int] = dict()
         for label in cspec.iterfind("default_proto/prototype/input/pentry[register]"):
             if label.get("metatype") is not None:
                 continue
 
-            args[len(args)] = context.registers[label.find("register").get("name")].offset
+            reg_label = label.find("register")
+            if reg_label is None:
+                continue
+
+            reg_name = reg_label.get("name")
+            if reg_name is None:
+                continue
+
+            args[len(args)] = context.registers[reg_name].offset
 
         for label in cspec.iterfind("default_proto/prototype/input/pentry/addr"):
             if label.get("space") != "stack":
                 continue
 
-            stack_argument_offset = int(label.get("offset"))
+            reg_offset = label.get("offset")
+            if reg_offset is None:
+                continue
+
+            stack_argument_offset = int(reg_offset)
 
         unaffected = set()
         for label in cspec.iterfind("default_proto/prototype/unaffected/register"):
-            unaffected.add(context.registers[label.get("name")].offset)
+            reg_name = label.get("name")
+            if reg_name is None:
+                continue
+            unaffected.add(context.registers[reg_name].offset)
 
         return ArchRegisters(
             stackpointer=sp_off,

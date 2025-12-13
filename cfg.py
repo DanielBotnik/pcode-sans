@@ -1,7 +1,6 @@
 from collections import deque
 from functools import lru_cache
-from typing import Iterator
-from igraph import Graph
+from igraph import Graph  # type: ignore[import-untyped]
 
 # TODO: Write tests for this.
 

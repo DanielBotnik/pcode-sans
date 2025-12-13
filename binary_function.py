@@ -195,12 +195,12 @@ class BinaryFunction:
 
 class FunctionBlock:
 
-    def __init__(self, start: int, function: BinaryFunction, end: int = None):
+    def __init__(self, start: int, function: BinaryFunction, end: int = -1):
         self.start = start
         self.end = end
         self.function = function
 
-        self._last_instruction_addr: int = None
+        self._last_instruction_addr: int | None = None
 
     @property
     def last_instruction_addr(self) -> int:
