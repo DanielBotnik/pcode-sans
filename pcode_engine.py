@@ -535,9 +535,6 @@ class Engine:
                 return res
 
         elif space == "ram":
-            res = self.instructions_state[self.current_inst].ram.get(input.offset)
-            if res is not None:
-                print("nigga not None")
             return input.offset
 
     def handle_put(self, output: pypcode.Varnode, val: Any):
