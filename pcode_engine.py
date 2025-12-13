@@ -440,66 +440,64 @@ class Engine:
         space = op.inputs[0].getSpaceFromConst().name
         offset = self.handle_get(op.inputs[1])
 
-        if space == "ram":
+        if space != "ram":
+            raise NotImplementedError(f"LOAD to space '{space}' is not implemented yet.")
 
-            require_deref = True
+        if isinstance(offset, (int, UnaryOp)):
+            self.handle_put(op.output, UnaryOp(offset, "*"))
+            return
 
-            if isinstance(offset, BinaryOp):
-                if isinstance(offset.left, Register) and offset.left.offset == 116:
-                    # todo: Add struct member access
+        if not isinstance(offset, BinaryOp):
+            res = MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.LOAD)
+            self.handle_put(op.output, res)
+            self.memory_accesses.append(res)
+            return
 
-                    signed_value = ctypes.c_int32(offset.right).value
-                    res = state.stack.get(signed_value, None)
+        left = offset.left
+        right = offset.right
 
-                    # TODO: Make works for all arches, not only mips
-                    if signed_value >= arch.stack_argument_offset:
-                        require_deref = False
-                        res = Arg((signed_value) // 4)
+        if not isinstance(left, Register) or left.offset != self.project.arch_regs.stackpointer:
+            res = MemoryAccess(self.current_inst, left, right, MemoryAccessType.LOAD)
+            self.handle_put(op.output, res)
+            self.memory_accesses.append(res)
+            return
 
-                    if res is not None:
-                        require_deref = False
+        if isinstance(left, Register) and left.offset == arch.stackpointer:
+            signed_value = ctypes.c_int32(right).value
+            res = state.stack.get(signed_value, None)
+            if signed_value >= arch.stack_argument_offset:
+                res = Arg((signed_value) // 4)
 
-            if require_deref:
-                if isinstance(offset, (int, UnaryOp)):
-                    res = UnaryOp(offset, "*")
-                elif isinstance(offset, BinaryOp):
-                    if isinstance(offset.left, Register) and offset.left.offset == arch.stackpointer:
-                        pass  # TODO: Handle stack later
-                    else:
-                        res = MemoryAccess(self.current_inst, offset.left, offset.right, MemoryAccessType.LOAD)
-                else:
-                    res = MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.LOAD)
-
-                if isinstance(res, MemoryAccess):
-                    self.memory_accesses.append(res)
-
-        self.handle_put(op.output, res)
+            self.handle_put(op.output, res)
 
     def handle_get(self, input: pypcode.Varnode | FakeVarnode) -> Any:
+        state = self.instructions_state[self.current_inst]
+        arch = self.project.arch_regs
+
         space = input.space.name
 
         if space == "register":
-            reg = self.instructions_state[self.current_inst].regs.get(input.offset, None)
+            reg = state.regs.get(input.offset, None)
             if reg is not None:
                 return reg
 
             res: Register | Arg
             if (
-                input.offset in self.project.arch_regs.rev_arguments
-                and self.instructions_state[self.current_inst].last_callsite is None
-                and input.offset not in self.instructions_state[self.current_inst].used_arguments
+                input.offset in arch.rev_arguments
+                and state.last_callsite is None
+                and input.offset not in state.used_arguments
             ):
-                res = Arg(self.project.arch_regs.rev_arguments[input.offset])
+                res = Arg(arch.rev_arguments[input.offset])
             else:
                 res = Register(input.offset, self.current_inst, self.project)
-            self.instructions_state[self.current_inst].regs[input.offset] = res
+            state.regs[input.offset] = res
             return res
 
         elif space == "const":
             return input.offset
 
         elif space == "unique":
-            return self.instructions_state[self.current_inst].unique.get(input.offset)
+            return state.unique.get(input.offset)
 
         elif space == "ram":
             return input.offset
