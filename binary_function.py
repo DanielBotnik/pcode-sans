@@ -43,7 +43,7 @@ class BinaryFunction:
 
         self.blocks_dict: dict[int, FunctionBlock] = {}
         self.blocks_dict_start_address: dict[int, FunctionBlock] = {}
-        self.return_blocks: set[FunctionBlock] = set()
+        self.return_blocks: dict[int, FunctionBlock] = dict()
 
         self.loops_dict: LoopsDict = dict()
         self.loops_dict_start_address: LoopsDict = dict()
@@ -94,6 +94,10 @@ class BinaryFunction:
         self.__fix_splited_block(the_blk.start, blk_a)
         self.__fix_splited_block(current_address, blk_b)
 
+        if the_blk.start in self.return_blocks:
+            self.return_blocks.pop(the_blk.start)
+            self.return_blocks[blk_b.start] = blk_b
+
         first_node = self.code_flow_graph.addr_to_vertex_id[the_blk.start]
         second_node = self.code_flow_graph.addr_to_vertex_id[current_address]
 
@@ -140,6 +144,7 @@ class BinaryFunction:
         return True
 
     def _handle_branchind(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
+        self.return_blocks[blk.start] = blk
         blk.end = self._next_address(addr) - 1
         return True
 
