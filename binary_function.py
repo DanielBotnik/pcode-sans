@@ -21,6 +21,10 @@ class AddressOpcodes:
     def __repr__(self):
         return f"{self.__class__.__name__}(bytes_size={self.bytes_size}, {len(self.ops)} OpCodes)"
 
+    def print_ops(self):
+        for op in self.ops:
+            print(op)
+
 
 @dataclass
 class _VisitedState:
