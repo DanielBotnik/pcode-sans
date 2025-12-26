@@ -1,6 +1,6 @@
 from frozendict import frozendict
 from binary_function import BinaryFunction
-from engine_types import Arg, CallSite, UnaryOp
+from engine_types import Arg, BinaryOp, CallSite, MemoryAccess, MemoryAccessType, UnaryOp
 from pcode_engine import Engine
 from project import Project
 
@@ -79,3 +79,18 @@ class TestCallSites:
             ),
         )
         assert expected_callsite in engine.callsites
+
+    def test_stack_argument_cleared_after_callsite(self):
+        CODE = b"\x3c\x1c\x00\x5f\x27\xbd\xff\xc8\x27\x9c\x27\xe0\xaf\xb0\x00\x2c\x27\xb0\x00\x24\xaf\xb1\x00\x30\x27\xa6\x00\x20\xaf\xa5\x00\x10\x00\x80\x88\x21\xaf\xbf\x00\x34\x00\x00\x20\x21\xaf\xbc\x00\x18\x00\x00\x38\x21\x8f\x99\x9d\x04\x03\x20\xf8\x09\x02\x00\x28\x21\x10\x40\x00\x06\x8f\xbf\x00\x34\x8f\xa6\x00\x20\x02\x20\x20\x21\x0c\x13\x72\x84\x02\x00\x28\x21\x8f\xbf\x00\x34\x8f\xb1\x00\x30\x8f\xb0\x00\x2c\x03\xe0\x00\x08\x27\xbd\x00\x38"
+        ADDR = 0x004DCA94
+
+        project = Project("MIPS:BE:32:default")
+        engine = Engine(ADDR, CODE, project)
+
+        assert engine.callsites[1].args == frozendict(
+            {
+                0: Arg(0),
+                1: BinaryOp(engine._first_stack_access, 0xFFFFFFEC, "+"),
+                2: MemoryAccess(0x004DCADC, engine._first_stack_access, 0xFFFFFFE8, MemoryAccessType.LOAD),
+            }
+        )

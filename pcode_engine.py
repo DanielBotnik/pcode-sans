@@ -62,6 +62,7 @@ class Engine:
         self.current_blk: FunctionBlock = FunctionBlock(0, self.bin_func)  # Temporal initialization
         self.__unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
         self.__conditional_move_condition: Optional[ConditionalSite] = None
+        self._first_stack_access: Optional[Register] = None
 
         self._init_handlers()
 
@@ -160,6 +161,16 @@ class Engine:
     def __clear_after_callsite(self, instruction_state: InstructionState) -> None:
         if instruction_state.last_callsite is None:
             return
+
+        for arg in instruction_state.last_callsite.args.values():
+            if not isinstance(arg, BinaryOp):
+                continue
+
+            if not isinstance(arg.left, Register) or not isinstance(arg.right, int):
+                continue
+
+            if arg.left.offset == self.project.arch_regs.stackpointer:
+                instruction_state.stack.pop(ctypes.c_int32(arg.right).value, None)
 
         for reg in list(instruction_state.regs.keys()):
             if reg not in self.project.arch_regs.unaffected:
@@ -482,9 +493,16 @@ class Engine:
 
         if isinstance(left, Register) and left.offset == arch.stackpointer:
             signed_value = ctypes.c_int32(right).value
-            res = state.stack.get(signed_value, None)
             if signed_value >= arch.stack_argument_offset:
                 res = Arg((signed_value) // 4)
+            else:
+                res = state.stack.get(signed_value, None)
+                if res is None:
+                    unsigned_value = ctypes.c_uint32(right).value
+                    res = MemoryAccess(
+                        self.current_inst, self._first_stack_access, unsigned_value, MemoryAccessType.LOAD
+                    )
+                    state.stack[signed_value] = res
 
             self.handle_put(op.output, res)
 
@@ -501,6 +519,8 @@ class Engine:
             res = Arg(arch.rev_arguments[offset])
         else:
             res = Register(offset, self.current_inst, self.project)
+            if offset == arch.stackpointer:
+                self._first_stack_access = res
         state.regs[offset] = res
         return res
 
