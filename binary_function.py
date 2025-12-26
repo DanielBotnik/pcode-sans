@@ -22,6 +22,12 @@ class AddressOpcodes:
         return f"{self.__class__.__name__}(bytes_size={self.bytes_size}, {len(self.ops)} OpCodes)"
 
 
+@dataclass
+class _VisitedState:
+    visited_addresses: set[int] = field(default_factory=set)
+    address_to_visit: deque[int] = field(default_factory=deque)
+
+
 class BinaryFunction:
 
     def __init__(self, start: int, code: bytes, project: Project):
@@ -39,6 +45,15 @@ class BinaryFunction:
         self.loops_dict_start_address: LoopsDict = dict()
 
         self.code_flow_grpah: CodeFlowGraph = CodeFlowGraph()
+
+        self.__visited_state: _VisitedState = _VisitedState()
+        self.__handlers = {
+            pypcode.OpCode.CBRANCH: self._handle_cbranch,
+            pypcode.OpCode.BRANCH: self._handle_branch,
+            pypcode.OpCode.BRANCHIND: self._handle_branchind,
+            pypcode.OpCode.RETURN: self._handle_branchind,
+            pypcode.OpCode.IMARK: self._handle_imark,
+        }
 
         self._init_opcodes()
         self._init_function_nodes()
@@ -60,113 +75,119 @@ class BinaryFunction:
                 current_size = sum([x.size for x in op.inputs])
         self.opcodes[current_address] = AddressOpcodes(opcodes[last_index:], current_size)
 
+    def __fix_splited_block(self, blk_addr: int, blk: FunctionBlock):
+        self.blocks_dict_start_address[blk_addr] = blk
+        for addr in list(self.blocks_dict.keys()):
+            if blk.start <= addr <= blk.end:
+                self.blocks_dict[addr] = blk
+
+    def _split_block(self, current_address: int):
+        the_blk = self.blocks_dict[current_address]
+
+        blk_a = FunctionBlock(the_blk.start, self, current_address - 1)
+        blk_b = FunctionBlock(current_address, self, end=the_blk.end)
+
+        self.__fix_splited_block(the_blk.start, blk_a)
+        self.__fix_splited_block(current_address, blk_b)
+
+        first_node = self.code_flow_grpah.addr_to_vertex_id[the_blk.start]
+        second_node = self.code_flow_grpah.addr_to_vertex_id[current_address]
+
+        targets = [e.target for e in self.code_flow_grpah.graph.es.select(_source=first_node)]
+        self.code_flow_grpah.graph.delete_edges([(first_node, t) for t in targets])
+
+        for t in targets:
+            if not self.code_flow_grpah.graph.are_adjacent(second_node, t):
+                self.code_flow_grpah.graph.add_edge(second_node, t)
+
+        if not self.code_flow_grpah.graph.are_adjacent(first_node, second_node):
+            self.code_flow_grpah.graph.add_edge(first_node, second_node)
+
+    def _add_address_to_visit(self, addr):
+        if addr not in self.__visited_state.visited_addresses:
+            self.__visited_state.address_to_visit.append(addr)
+
+    def _handle_cbranch(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
+        branch_addr = op.inputs[0].offset
+        if branch_addr == 2:  # This means skip insturctions
+            return
+
+        self.code_flow_grpah.add_edge(blk.start, branch_addr)
+        self._add_address_to_visit(branch_addr)
+
+        # Sometimes the next address is the jump address
+        # future `OpCode.BRANCH` will handle that case
+        if branch_addr == self._next_address(addr):
+            return
+
+        self.code_flow_grpah.add_edge(blk.start, self._next_address(addr))
+        self._add_address_to_visit(self._next_address(addr))
+
+        blk.end = self._next_address(addr) - 1
+        return True
+
+    def _handle_branch(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
+        branch_addr = op.inputs[0].offset
+        if self.start < branch_addr <= self.end:  # Jumping outside of the function
+            self.code_flow_grpah.add_edge(blk.start, branch_addr)
+            self._add_address_to_visit(branch_addr)
+
+        blk.end = self._next_address(addr) - 1
+        return True
+
+    def _handle_branchind(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
+        blk.end = self._next_address(addr) - 1
+        return True
+
+    def _handle_imark(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
+        blk._last_instruction_addr = op.inputs[0].offset
+        return False
+
+    def _iterate_address_instructions(self, addr: int, blk: FunctionBlock):
+        is_last_address = False
+
+        for op in self.opcodes[addr].ops:
+            handler = self.__handlers.get(op.opcode)
+            if handler is not None:
+                is_last_address = handler(op, addr, blk)
+
+        return is_last_address
+
+    def _iterate_block_instructions(self, addr: int, blk: FunctionBlock):
+        while True:
+            if addr in self.blocks_dict:  # A block was previously generated from a jump
+                self.code_flow_grpah.add_edge(blk.start, addr)
+                blk.end = addr - 1
+                break
+
+            self.blocks_dict[addr] = blk
+
+            is_last_address = self._iterate_address_instructions(addr, blk)
+            if is_last_address:
+                break
+
+            addr += self.opcodes[addr].bytes_size
+
     def _init_function_nodes(self):
-
-        def add_address_to_visit(addr):
-            if addr not in visited_addresses:
-                address_to_visit.append(addr)
-
-        visited_addresses = set()
-        address_to_visit = deque()
-        address_to_visit.append(self.start)
+        self.__visited_state.address_to_visit.append(self.start)
         self.code_flow_grpah.add_block(self.start)  # Must be for single block functions
 
-        while len(address_to_visit) != 0:
-            current_vistied_address = address_to_visit.popleft()
-            if current_vistied_address in visited_addresses:
+        while len(self.__visited_state.address_to_visit) != 0:
+            current_address = self.__visited_state.address_to_visit.popleft()
+            if current_address in self.__visited_state.visited_addresses:
                 continue
-            visited_addresses.add(current_vistied_address)
+            self.__visited_state.visited_addresses.add(current_address)
 
             # This catches the case where an entire block have been created, but later due to a jmp
             # a new block starts in the middle of the full block, meaning it should be split into
             # two different blocks.
-            if current_vistied_address in self.blocks_dict:
-                the_blk = self.blocks_dict[current_vistied_address]
-
-                blk_a = FunctionBlock(the_blk.start, self, current_vistied_address - 1)
-                blk_b = FunctionBlock(current_vistied_address, self, end=the_blk.end)
-
-                self.blocks_dict_start_address[the_blk.start] = blk_a
-                for addr in list(self.blocks_dict.keys()):
-                    if blk_a.start <= addr <= blk_a.end:
-                        self.blocks_dict[addr] = blk_a
-
-                self.blocks_dict_start_address[current_vistied_address] = blk_b
-                for addr in list(self.blocks_dict.keys()):
-                    if blk_b.start <= addr <= blk_b.end:
-                        self.blocks_dict[addr] = blk_b
-
-                first_node = self.code_flow_grpah.addr_to_vertex_id[the_blk.start]
-                second_node = self.code_flow_grpah.addr_to_vertex_id[current_vistied_address]
-
-                targets = [e.target for e in self.code_flow_grpah.graph.es.select(_source=first_node)]
-                self.code_flow_grpah.graph.delete_edges([(first_node, t) for t in targets])
-
-                for t in targets:
-                    if not self.code_flow_grpah.graph.are_adjacent(second_node, t):
-                        self.code_flow_grpah.graph.add_edge(second_node, t)
-
-                if not self.code_flow_grpah.graph.are_adjacent(first_node, second_node):
-                    self.code_flow_grpah.graph.add_edge(first_node, second_node)
-
+            if current_address in self.blocks_dict:
+                self._split_block(current_address)
                 continue
 
-            current_address = current_vistied_address
-            current_blk = FunctionBlock(current_vistied_address, self)
-            self.blocks_dict_start_address[current_vistied_address] = current_blk
-            block_reached_end = False
-
-            while block_reached_end == False:
-
-                if current_address in self.blocks_dict:
-                    self.code_flow_grpah.add_edge(current_blk.start, current_address)
-                    current_blk.end = current_address - 1
-                    break
-
-                self.blocks_dict[current_address] = current_blk
-
-                for op in self.opcodes[current_address].ops:
-                    if op.opcode == pypcode.OpCode.CBRANCH:
-
-                        branch_addr = op.inputs[0].offset
-                        if branch_addr == 2:  # This means skip insturctions
-                            continue
-
-                        self.code_flow_grpah.add_edge(current_blk.start, branch_addr)
-                        add_address_to_visit(branch_addr)
-
-                        # Sometimes the next address is the jump address
-                        # future `OpCode.BRANCH` will handle that case
-                        if branch_addr == self._next_address(current_address):
-                            continue
-
-                        self.code_flow_grpah.add_edge(current_blk.start, self._next_address(current_address))
-                        add_address_to_visit(self._next_address(current_address))
-
-                        current_blk.end = self._next_address(current_address) - 1
-                        block_reached_end = True
-
-                    elif op.opcode == pypcode.OpCode.BRANCH:
-                        branch_addr = op.inputs[0].offset
-                        if self.start < branch_addr <= self.end:  # Jumping outside of the function
-                            self.code_flow_grpah.add_edge(current_blk.start, branch_addr)
-                            add_address_to_visit(branch_addr)
-
-                        current_blk.end = self._next_address(current_address) - 1
-                        block_reached_end = True
-
-                    elif op.opcode == pypcode.OpCode.BRANCHIND:
-                        current_blk.end = self._next_address(current_address) - 1
-                        block_reached_end = True
-
-                    elif op.opcode == pypcode.OpCode.RETURN:
-                        current_blk.end = self._next_address(current_address) - 1
-                        block_reached_end = True
-
-                    elif op.opcode == pypcode.OpCode.IMARK:
-                        current_blk._last_instruction_addr = op.inputs[0].offset
-
-                current_address += self.opcodes[current_address].bytes_size
+            current_blk = FunctionBlock(current_address, self)
+            self.blocks_dict_start_address[current_address] = current_blk
+            self._iterate_block_instructions(current_address, current_blk)
 
     def _init_loops(self):
         for loop in self.code_flow_grpah.get_loops():
