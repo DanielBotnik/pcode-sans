@@ -53,6 +53,8 @@ class Engine:
         self.current_inst: int = 0
         self.previous_marks: list[int] = list()
         self._handlers: dict[pypcode.OpCode, Callable[[pypcode.PcodeOp], None]] = {}
+        self.__put_handlers: dict[str, Callable[[int, Any], None]] = {}
+        self.__get_handlers: dict[str, Callable[[int], Any]] = {}
         self.callsites: list[CallSite] = []
         self.conditional_sites: list[ConditionalSite] = []
         self.memory_accesses: list[MemoryAccess] = []
@@ -127,6 +129,22 @@ class Engine:
                 pypcode.OpCode.INT_SEXT: self._handle_int_sext,
                 pypcode.OpCode.INT_ZEXT: self._handle_int_zext,
                 pypcode.OpCode.SUBPIECE: self._handle_subpiece,
+            }
+        )
+
+        self.__put_handlers.update(
+            {
+                "register": self._handle_put_register,
+                "unique": self._handle_put_unique,
+            }
+        )
+
+        self.__get_handlers.update(
+            {
+                "register": self._handle_get_register,
+                "const": self._handle_get_const,
+                "unique": self._handle_get_unique,
+                "ram": self._handle_get_const,
             }
         )
 
@@ -470,57 +488,46 @@ class Engine:
 
             self.handle_put(op.output, res)
 
-    def handle_get(self, input: pypcode.Varnode | FakeVarnode) -> Any:
+    def _handle_get_register(self, offset: int) -> Any:
         state = self.instructions_state[self.current_inst]
         arch = self.project.arch_regs
 
-        space = input.space.name
+        reg = state.regs.get(offset, None)
+        if reg is not None:
+            return reg
 
-        if space == "register":
-            reg = state.regs.get(input.offset, None)
-            if reg is not None:
-                return reg
+        res: Register | Arg
+        if offset in arch.rev_arguments and state.last_callsite is None and offset not in state.used_arguments:
+            res = Arg(arch.rev_arguments[offset])
+        else:
+            res = Register(offset, self.current_inst, self.project)
+        state.regs[offset] = res
+        return res
 
-            res: Register | Arg
-            if (
-                input.offset in arch.rev_arguments
-                and state.last_callsite is None
-                and input.offset not in state.used_arguments
-            ):
-                res = Arg(arch.rev_arguments[input.offset])
-            else:
-                res = Register(input.offset, self.current_inst, self.project)
-            state.regs[input.offset] = res
-            return res
+    def _handle_get_const(self, offset: int) -> Any:
+        return offset
 
-        elif space == "const":
-            return input.offset
+    def _handle_get_unique(self, offset: int) -> Any:
+        return self.instructions_state[self.current_inst].unique.get(offset, None)
 
-        elif space == "unique":
-            return state.unique.get(input.offset)
+    def handle_get(self, input: pypcode.Varnode | FakeVarnode) -> Any:
+        return self.__get_handlers[input.space.name](input.offset)
 
-        elif space == "ram":
-            return input.offset
+    def _handle_put_register(self, offset: int, val: Any):
+        if self.__conditional_move_condition is None:
+            self.instructions_state[self.current_inst].regs[offset] = val
+        else:
+            self.instructions_state[self.current_inst].regs[offset] = ConditionalExpression(
+                self.__conditional_move_condition,
+                self.instructions_state[self.current_inst].regs[offset],
+                val,
+            )
+
+    def _handle_put_unique(self, offset: int, val: Any):
+        self.instructions_state[self.current_inst].unique[offset] = val
 
     def handle_put(self, output: pypcode.Varnode | None, val: Any):
-        if output is None:
-            raise ValueError("Output varnode is None in handle_put")
-
-        space = output.space.name
-
-        if space == "register":
-            if self.__conditional_move_condition is None:
-                self.instructions_state[self.current_inst].regs[output.offset] = val
-            else:
-                self.instructions_state[self.current_inst].regs[output.offset] = ConditionalExpression(
-                    self.__conditional_move_condition,
-                    self.instructions_state[self.current_inst].regs[output.offset],
-                    val,
-                )
-        elif space == "unique":
-            self.instructions_state[self.current_inst].unique[output.offset] = val
-        else:
-            raise RuntimeError(f"Unexpected space in handle_put: {space}")
+        self.__put_handlers[output.space.name](output.offset, val)
 
     def __extract_target(self, target: Any) -> Any:
         if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
