@@ -51,7 +51,7 @@ class TestLoops:
         project = Project("MIPS:BE:32:default")
         bin_func = BinaryFunction(ADDR, CODE, project)
 
-        blocks = list(bin_func.code_flow_grpah.traverse())
+        blocks = list(bin_func.code_flow_graph.traverse())
         assert len(blocks) == len(set(blocks))
 
     def test_two_loops_from_same_block(self):

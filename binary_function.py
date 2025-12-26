@@ -44,7 +44,7 @@ class BinaryFunction:
         self.loops_dict: LoopsDict = dict()
         self.loops_dict_start_address: LoopsDict = dict()
 
-        self.code_flow_grpah: CodeFlowGraph = CodeFlowGraph()
+        self.code_flow_graph: CodeFlowGraph = CodeFlowGraph()
 
         self.__visited_state: _VisitedState = _VisitedState()
         self.__handlers = {
@@ -90,18 +90,18 @@ class BinaryFunction:
         self.__fix_splited_block(the_blk.start, blk_a)
         self.__fix_splited_block(current_address, blk_b)
 
-        first_node = self.code_flow_grpah.addr_to_vertex_id[the_blk.start]
-        second_node = self.code_flow_grpah.addr_to_vertex_id[current_address]
+        first_node = self.code_flow_graph.addr_to_vertex_id[the_blk.start]
+        second_node = self.code_flow_graph.addr_to_vertex_id[current_address]
 
-        targets = [e.target for e in self.code_flow_grpah.graph.es.select(_source=first_node)]
-        self.code_flow_grpah.graph.delete_edges([(first_node, t) for t in targets])
+        targets = [e.target for e in self.code_flow_graph.graph.es.select(_source=first_node)]
+        self.code_flow_graph.graph.delete_edges([(first_node, t) for t in targets])
 
         for t in targets:
-            if not self.code_flow_grpah.graph.are_adjacent(second_node, t):
-                self.code_flow_grpah.graph.add_edge(second_node, t)
+            if not self.code_flow_graph.graph.are_adjacent(second_node, t):
+                self.code_flow_graph.graph.add_edge(second_node, t)
 
-        if not self.code_flow_grpah.graph.are_adjacent(first_node, second_node):
-            self.code_flow_grpah.graph.add_edge(first_node, second_node)
+        if not self.code_flow_graph.graph.are_adjacent(first_node, second_node):
+            self.code_flow_graph.graph.add_edge(first_node, second_node)
 
     def _add_address_to_visit(self, addr):
         if addr not in self.__visited_state.visited_addresses:
@@ -112,7 +112,7 @@ class BinaryFunction:
         if branch_addr == 2:  # This means skip insturctions
             return
 
-        self.code_flow_grpah.add_edge(blk.start, branch_addr)
+        self.code_flow_graph.add_edge(blk.start, branch_addr)
         self._add_address_to_visit(branch_addr)
 
         # Sometimes the next address is the jump address
@@ -120,7 +120,7 @@ class BinaryFunction:
         if branch_addr == self._next_address(addr):
             return
 
-        self.code_flow_grpah.add_edge(blk.start, self._next_address(addr))
+        self.code_flow_graph.add_edge(blk.start, self._next_address(addr))
         self._add_address_to_visit(self._next_address(addr))
 
         blk.end = self._next_address(addr) - 1
@@ -129,7 +129,7 @@ class BinaryFunction:
     def _handle_branch(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
         branch_addr = op.inputs[0].offset
         if self.start < branch_addr <= self.end:  # Jumping outside of the function
-            self.code_flow_grpah.add_edge(blk.start, branch_addr)
+            self.code_flow_graph.add_edge(blk.start, branch_addr)
             self._add_address_to_visit(branch_addr)
 
         blk.end = self._next_address(addr) - 1
@@ -156,7 +156,7 @@ class BinaryFunction:
     def _iterate_block_instructions(self, addr: int, blk: FunctionBlock):
         while True:
             if addr in self.blocks_dict:  # A block was previously generated from a jump
-                self.code_flow_grpah.add_edge(blk.start, addr)
+                self.code_flow_graph.add_edge(blk.start, addr)
                 blk.end = addr - 1
                 break
 
@@ -170,7 +170,7 @@ class BinaryFunction:
 
     def _init_function_nodes(self):
         self.__visited_state.address_to_visit.append(self.start)
-        self.code_flow_grpah.add_block(self.start)  # Must be for single block functions
+        self.code_flow_graph.add_block(self.start)  # Must be for single block functions
 
         while len(self.__visited_state.address_to_visit) != 0:
             current_address = self.__visited_state.address_to_visit.popleft()
@@ -190,7 +190,7 @@ class BinaryFunction:
             self._iterate_block_instructions(current_address, current_blk)
 
     def _init_loops(self):
-        for loop in self.code_flow_grpah.get_loops():
+        for loop in self.code_flow_graph.get_loops():
             loop = Loop(start=loop[0], blocks=set(loop))
             for blk_addr in loop.blocks:
                 for addr in range(blk_addr, self.blocks_dict[blk_addr].end + 1, self.opcodes[blk_addr].bytes_size):
@@ -208,10 +208,10 @@ class BinaryFunction:
         return current_address + self.opcodes[current_address].bytes_size
 
     def is_ancestor(self, addr1: int, addr2: int) -> bool:
-        return self.code_flow_grpah.is_ancestor(addr1, addr2)
+        return self.code_flow_graph.is_ancestor(addr1, addr2)
 
     def common_ancestor(self, addr1: int, addr2: int) -> int:
-        return self.code_flow_grpah.first_common_ancestor(addr1, addr2)
+        return self.code_flow_graph.first_common_ancestor(addr1, addr2)
 
 
 class FunctionBlock:

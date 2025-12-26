@@ -63,9 +63,9 @@ class Engine:
 
         self._init_handlers()
 
-        for current_addr in self.bin_func.code_flow_grpah.traverse():
+        for current_addr in self.bin_func.code_flow_graph.traverse():
             blk = self.bin_func.blocks_dict_start_address[current_addr]
-            parents = self.bin_func.code_flow_grpah.get_parnets(current_addr)
+            parents = self.bin_func.code_flow_graph.get_parnets(current_addr)
             self.previous_marks = [self.bin_func.blocks_dict[parent].last_instruction_addr for parent in parents]
             self._analyze_block(blk)
 

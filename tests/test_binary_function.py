@@ -22,7 +22,7 @@ class TestBinaryFunctionMIPSEL:
         cfg.add_edges(0x00000A84, [0x00000A90])
         cfg.add_edges(0x00000A90, [0x00000A1C])
 
-        verify_cfg_equal(cfg, bin_func.code_flow_grpah)
+        verify_cfg_equal(cfg, bin_func.code_flow_graph)
 
         verify_blocks_dict(bin_func)
 
@@ -35,7 +35,7 @@ class TestBinaryFunctionMIPSEL:
 
         cfg = CodeFlowGraph()
         cfg.add_edges(0x00000004, [0x000000D8, 0x000000E0])
-        verify_cfg_equal(cfg, bin_func.code_flow_grpah)
+        verify_cfg_equal(cfg, bin_func.code_flow_graph)
 
         verify_blocks_dict(bin_func)
 
@@ -54,7 +54,7 @@ class TestBinaryFunctionMIPSEL:
         cfg.add_edges(0x000001B0, [0x000001B8, 0x00000158])
         cfg.add_edges(0x00000158, [0x00000188, 0x00000190])
         cfg.add_edges(0x00000188, [0x00000190, 0x000001B8])
-        verify_cfg_equal(cfg, bin_func.code_flow_grpah)
+        verify_cfg_equal(cfg, bin_func.code_flow_graph)
 
         verify_blocks_dict(bin_func)
 
@@ -68,7 +68,7 @@ class TestBinaryFunctionMIPSEL:
         cfg = CodeFlowGraph()
         cfg.add_block(0x00000B10)
 
-        verify_cfg_equal(cfg, bin_func.code_flow_grpah)
+        verify_cfg_equal(cfg, bin_func.code_flow_graph)
         verify_blocks_dict(bin_func)
 
 
@@ -96,7 +96,7 @@ class TestBinaryFunctionMIPSBE:
         cfg.add_edges(0x00403F50, [0x00403F78, 0x00403FA4])
         cfg.add_edges(0x00403F78, [0x00403FA4])
 
-        verify_cfg_equal(cfg, bin_func.code_flow_grpah)
+        verify_cfg_equal(cfg, bin_func.code_flow_graph)
         verify_blocks_dict(bin_func)
 
     def test_call_outside_func_is_not_branch(self):
@@ -110,7 +110,7 @@ class TestBinaryFunctionMIPSBE:
         cfg = CodeFlowGraph()
         cfg.add_block(0x00403E6C)
 
-        verify_cfg_equal(cfg, bin_func.code_flow_grpah)
+        verify_cfg_equal(cfg, bin_func.code_flow_graph)
         verify_blocks_dict(bin_func)
 
         assert len(bin_func.blocks_dict_start_address.keys()) == 1
