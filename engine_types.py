@@ -153,6 +153,20 @@ class ConditionalExpression:
     def __repr__(self):
         return f"({repr_or_hexint(self.iftrue)} if({self.condsite.condition!r} at {hex(self.condsite.addr)}) else {repr_or_hexint(self.iffalse)})"
 
+    def collect_values(self) -> list[Any]:
+        values = []
+        if isinstance(self.iftrue, ConditionalExpression):
+            values.extend(self.iftrue.collect_values())
+        else:
+            values.append(self.iftrue)
+
+        if isinstance(self.iffalse, ConditionalExpression):
+            values.extend(self.iffalse.collect_values())
+        else:
+            values.append(self.iffalse)
+
+        return values
+
 
 class MemoryAccessType(IntEnum):
     LOAD = 0

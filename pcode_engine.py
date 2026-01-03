@@ -63,6 +63,7 @@ class Engine:
         self.__unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
         self.__conditional_move_condition: Optional[ConditionalSite] = None
         self._first_stack_access: Optional[Register] = None
+        self._return_values: Optional[set[Any]] = None
 
         self._init_handlers()
 
@@ -79,6 +80,31 @@ class Engine:
     @property
     def loops_dict(self) -> LoopsDict:
         return self.bin_func.loops_dict
+
+    @property
+    def return_values(self) -> set[Any]:
+        if self._return_values is not None:
+            return self._return_values
+
+        self._return_values = set()
+
+        callsites_by_addr = {cs.addr: cs for cs in self.callsites}
+
+        for blk in self.bin_func.return_blocks.values():
+            if blk.last_instruction_addr in callsites_by_addr:
+                self._return_values.add(callsites_by_addr[blk.last_instruction_addr])
+                continue
+
+            ret_val = self.instructions_state[blk.last_instruction_addr].regs.get(self.project.arch_regs.ret)
+            if ret_val is None:
+                continue
+
+            if isinstance(ret_val, ConditionalExpression):
+                self._return_values.update(ret_val.collect_values())
+            else:
+                self._return_values.add(ret_val)
+
+        return self._return_values
 
     def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str, signed=False):
         left = self.handle_get(op.inputs[0])
@@ -183,11 +209,20 @@ class Engine:
         """
         Merge two dict-like states using ConditionalExpression when values differ.
         If a key has the same value in both branches, keep that value.
-        Otherwise, create ConditionalExpression(condsite, iftrue, iffalse)
+        If a key exists in only one branch, keep that value.
         """
         merged = {}
-        for k in iftrue.keys() & iffalse.keys():
-            merged[k] = iftrue[k] if iftrue[k] == iffalse[k] else ConditionalExpression(condsite, iftrue[k], iffalse[k])
+
+        for k in iftrue.keys() | iffalse.keys():  # union of keys
+            t = iftrue.get(k)
+            f = iffalse.get(k)
+
+            if k in iftrue and k in iffalse:
+                merged[k] = t if t == f else ConditionalExpression(condsite, t, f)
+            else:
+                # appears in only one dict
+                merged[k] = t if k in iftrue else f
+
         return merged
 
     def _get_block_and_state_from_mark(self, mark: int) -> tuple[FunctionBlock, InstructionState]:
@@ -496,8 +531,9 @@ class Engine:
             res = Arg(arch.rev_arguments[offset])
         else:
             res = Register(offset, self.current_inst, self.project)
-            if offset == arch.stackpointer:
+            if offset == arch.stackpointer and self._first_stack_access is None:
                 self._first_stack_access = res
+
         state.regs[offset] = res
         return res
 

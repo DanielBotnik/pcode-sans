@@ -34,3 +34,9 @@ def get_condsite_by_addr(engine: Engine, addr: int) -> ConditionalSite:
     for condsite in engine.conditional_sites:
         if condsite.addr == addr:
             return condsite
+
+
+def get_callsite_by_addr(engine: Engine, addr: int):
+    for callsite in engine.callsites:
+        if callsite.addr == addr:
+            return callsite
