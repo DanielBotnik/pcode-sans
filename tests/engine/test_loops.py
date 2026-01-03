@@ -1,7 +1,9 @@
 from binary_function import BinaryFunction, Loop
 from pcode_engine import Engine
 from project import Project
-from engine_types import Arg, BinaryOp, MemoryAccess, MemoryAccessType, Register, UnaryOp
+from engine_types import Arg, BinaryOp, ConditionalExpression, MemoryAccess, MemoryAccessType, Register, UnaryOp
+
+from tests.helpers import get_condsite_by_addr
 
 
 class TestLoops:
@@ -212,7 +214,19 @@ class TestLoops:
                 0x0056FDC4: BinaryOp(
                     MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0, project), 1, MemoryAccessType.LOAD), 0, "=="
                 ),
-                0x0056FE1C: BinaryOp(Register(16, 0x0056FE1C, project), 0, "=="),
+                0x0056FE1C: BinaryOp(
+                    ConditionalExpression(
+                        condsite=get_condsite_by_addr(engine, 0x0056FDFC),
+                        iftrue=ConditionalExpression(
+                            condsite=get_condsite_by_addr(engine, 0x56FDDC),
+                            iftrue=MemoryAccess(0x56FDD8, Arg(1), 2, MemoryAccessType.LOAD),
+                            iffalse=MemoryAccess(0x56FDF8, Register(32, 0x56FDF8, project), 1, MemoryAccessType.LOAD),
+                        ),
+                        iffalse=MemoryAccess(0x56FE0C0, Register(32, 0x56FDF8, project), 2, MemoryAccessType.LOAD),
+                    ),
+                    0,
+                    "==",
+                ),
             },
         )
 

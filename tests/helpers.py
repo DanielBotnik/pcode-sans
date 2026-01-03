@@ -1,5 +1,7 @@
 from binary_function import BinaryFunction
 from cfg import CodeFlowGraph
+from engine_types import ConditionalSite
+from pcode_engine import Engine
 
 
 def verify_blocks_dict(bin_func: BinaryFunction):
@@ -26,3 +28,9 @@ def verify_cfg_equal(cfg1: CodeFlowGraph, cfg2: CodeFlowGraph):
         edges2.add((src, dst))
 
     assert edges1 == edges2
+
+
+def get_condsite_by_addr(engine: Engine, addr: int) -> ConditionalSite:
+    for condsite in engine.conditional_sites:
+        if condsite.addr == addr:
+            return condsite

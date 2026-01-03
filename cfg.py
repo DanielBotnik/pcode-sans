@@ -107,20 +107,30 @@ class CodeFlowGraph:
                 # Revisit this node later
                 queue.append(vid)
 
-    def first_common_ancestor(self, addr1: int, addr2: int) -> int:
-        anc_u = set(self.graph.subcomponent(self.addr_to_vertex_id[addr1], mode="IN"))
-        anc_v = set(self.graph.subcomponent(self.addr_to_vertex_id[addr2], mode="IN"))
+    def first_common_ancestor(self, addr1: int, addr2: int) -> int | None:
+        v1 = self.addr_to_vertex_id[addr1]
+        v2 = self.addr_to_vertex_id[addr2]
+
+        anc_u = set(self.graph.subcomponent(v1, mode="IN"))
+        anc_v = set(self.graph.subcomponent(v2, mode="IN"))
 
         commons = anc_u & anc_v
+        if not commons:
+            return None
 
-        vertex_idx = min(
-            commons,
-            key=lambda a: max(
-                self.graph.distances(a, self.addr_to_vertex_id[addr1])[0],
-                self.graph.distances(a, self.addr_to_vertex_id[addr2])[0],
-            ),
-        )
+        # If one node can reach the other, prefer the ancestor node itself.
+        # (If both can reach each other (same SCC), prefer the first argument.)
+        if v1 in anc_v:
+            return self.graph.vs[v1]["addr"]
+        if v2 in anc_u:
+            return self.graph.vs[v2]["addr"]
 
+        # Otherwise pick the common ancestor that minimises the maximum distance to the two nodes.
+        def score(a_idx: int) -> float:
+            d1, d2 = self.graph.distances(a_idx, [v1, v2])[0]  # returns [dist_to_v1, dist_to_v2]
+            return max(d1, d2)
+
+        vertex_idx = min(commons, key=score)
         return self.graph.vs[vertex_idx]["addr"]
 
     def is_ancestor(self, addr1: int, addr2: int) -> bool:

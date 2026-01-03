@@ -179,13 +179,44 @@ class Engine:
         instruction_state.regs[self.project.arch_regs.ret] = instruction_state.last_callsite
         instruction_state.last_callsite = None
 
-    def __merge_dicts(self, x_dict, y_dict, condsite, iftrue, iffalse):
-        """Merge two dict-like states using ConditionalExpression when values differ."""
+    def __merge_dicts(self, condsite, iftrue, iffalse):
+        """
+        Merge two dict-like states using ConditionalExpression when values differ.
+        If a key has the same value in both branches, keep that value.
+        Otherwise, create ConditionalExpression(condsite, iftrue, iffalse)
+        """
         merged = {}
-        for k in x_dict.keys() & y_dict.keys():
-            xv, yv = x_dict[k], y_dict[k]
-            merged[k] = xv if xv == yv else ConditionalExpression(condsite, iftrue[k], iffalse[k])
+        for k in iftrue.keys() & iffalse.keys():
+            merged[k] = iftrue[k] if iftrue[k] == iffalse[k] else ConditionalExpression(condsite, iftrue[k], iffalse[k])
         return merged
+
+    def _get_block_and_state_from_mark(self, mark: int) -> tuple[FunctionBlock, InstructionState]:
+        blk = self.bin_func.blocks_dict[mark]
+        state = self.instructions_state[mark]
+        return blk, state.goto_state.get(self.current_inst, state)
+
+    def _handle_first_block(self):
+        self.instructions_state[self.current_inst] = InstructionState()
+
+    def _handle_one_previous_parent(self):
+        previous_state = self.instructions_state[self.previous_marks[0]]
+        current_state = previous_state.goto_state.get(self.current_inst, previous_state).copy()
+        self.__clear_after_callsite(current_state)
+        self.instructions_state[self.current_inst] = current_state
+
+    def _merge_instruction_states(
+        self, condsite: ConditionalSite, iftrue: InstructionState, iffalse: InstructionState
+    ) -> InstructionState:
+        """
+        Helper to merge two states into a new state based on a conditional site.
+        """
+        merged_state = InstructionState()
+        merged_state.regs = self.__merge_dicts(condsite, iftrue.regs, iffalse.regs)
+        merged_state.unique = self.__merge_dicts(condsite, iftrue.unique, iffalse.unique)
+        merged_state.ram = self.__merge_dicts(condsite, iftrue.ram, iffalse.ram)
+        merged_state.stack = self.__merge_dicts(condsite, iftrue.stack, iffalse.stack)
+        merged_state.used_arguments = set.union(iftrue.used_arguments, iffalse.used_arguments)
+        return merged_state
 
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
@@ -209,120 +240,66 @@ class Engine:
                     good_marks.append(mark)
             self.previous_marks = good_marks
 
-        if len(self.previous_marks) == 0:
-            self.instructions_state[self.current_inst] = InstructionState()
-            self.previous_marks = [self.current_inst]
-            return
+        if len(self.previous_marks) == 0:  # first block
+            self._handle_first_block()
 
-        if len(self.previous_marks) == 1:
-            if self.current_inst in self.instructions_state[self.previous_marks[0]].goto_state:
-                self.instructions_state[self.current_inst] = (
-                    self.instructions_state[self.previous_marks[0]].goto_state[self.current_inst].copy()
-                )
-            else:
-                self.instructions_state[self.current_inst] = self.instructions_state[self.previous_marks[0]].copy()
-            self.__clear_after_callsite(self.instructions_state[self.current_inst])
-
-        elif len(self.previous_marks) == 2:
-            blk_a = self.bin_func.blocks_dict[self.previous_marks[0]]
-            blk_b = self.bin_func.blocks_dict[self.previous_marks[1]]
-
-            x = self.instructions_state[self.previous_marks[0]]
-            if self.current_inst in x.goto_state:
-                x = x.goto_state[self.current_inst]
-            y = self.instructions_state[self.previous_marks[1]]
-            if self.current_inst in y.goto_state:
-                y = y.goto_state[self.current_inst]
-            self.__clear_after_callsite(x)
-            self.__clear_after_callsite(y)
-
-            common_ancestor_addr = self.bin_func.common_ancestor(blk_a.start, blk_b.start)
-            common_condsite = self.addr_to_codeflow_conditional_site.get(common_ancestor_addr, None)
-
-            if common_condsite is None:
-                common_instruction_state = InstructionState()
-
-                previous_instruction_states = [self.instructions_state[addr] for addr in self.previous_marks]
-                for reg in set.intersection(*(set(s.regs.keys()) for s in previous_instruction_states)):
-                    common_instruction_state.regs[reg] = previous_instruction_states[0].regs[reg]
-                for unique in set.intersection(*(set(s.unique.keys()) for s in previous_instruction_states)):
-                    common_instruction_state.unique[unique] = previous_instruction_states[0].unique[unique]
-                for addr in set.intersection(*(set(s.ram.keys()) for s in previous_instruction_states)):
-                    common_instruction_state.ram[addr] = previous_instruction_states[0].ram[addr]
-                for addr in set.intersection(*(set(s.stack.keys()) for s in previous_instruction_states)):
-                    common_instruction_state.stack[addr] = previous_instruction_states[0].stack[addr]
-
-                common_instruction_state.used_arguments = set.union(
-                    *[p.used_arguments for p in previous_instruction_states]
-                )
-
-                self.instructions_state[self.current_inst] = common_instruction_state
-            else:
-
-                iftrue_state, iffalse_state = None, None
-
-                if self.bin_func.is_ancestor(blk_a.start, common_condsite.iffalse):
-                    iftrue_state, iffalse_state = x, y
-                else:
-                    iftrue_state, iffalse_state = y, x
-
-                common_instruction_state = InstructionState()
-                common_instruction_state.regs = self.__merge_dicts(
-                    x.regs, y.regs, common_condsite, iftrue_state.regs, iffalse_state.regs
-                )
-                common_instruction_state.unique = self.__merge_dicts(
-                    x.unique, y.unique, common_condsite, iftrue_state.unique, iffalse_state.unique
-                )
-                common_instruction_state.ram = self.__merge_dicts(
-                    x.ram, y.ram, common_condsite, iftrue_state.ram, iffalse_state.ram
-                )
-                common_instruction_state.stack = self.__merge_dicts(
-                    x.stack, y.stack, common_condsite, iftrue_state.stack, iffalse_state.stack
-                )
-                common_instruction_state.used_arguments = set.union(x.used_arguments, y.used_arguments)
-
-                self.instructions_state[self.current_inst] = common_instruction_state
+        elif len(self.previous_marks) == 1:
+            self._handle_one_previous_parent()
 
         else:
-            # TODO: care about diffrences, now even more...
-            common_instruction_state = InstructionState()
+            # --- Generic N-Parent Merge Logic ---
 
-            previous_instruction_states = [self.instructions_state[addr] for addr in self.previous_marks]
-            for reg in set.intersection(*(set(s.regs.keys()) for s in previous_instruction_states)):
-                if all(p.regs[reg] == previous_instruction_states[0].regs[reg] for p in previous_instruction_states):
-                    common_instruction_state.regs[reg] = previous_instruction_states[0].regs[reg]
-            for unique in set.intersection(*(set(s.unique.keys()) for s in previous_instruction_states)):
-                common_instruction_state.unique[unique] = previous_instruction_states[0].unique[unique]
-            for addr in set.intersection(*(set(s.ram.keys()) for s in previous_instruction_states)):
-                common_instruction_state.ram[addr] = previous_instruction_states[0].ram[addr]
-            for addr in set.intersection(*(set(s.stack.keys()) for s in previous_instruction_states)):
-                common_instruction_state.stack[addr] = previous_instruction_states[0].stack[addr]
+            # 1. Collect all parent contexts (Block, State)
+            # We copy the state to ensure we don't mutate the original instruction state
+            # when clearing callsites.
+            parent_contexts = []
+            for mark in self.previous_marks:
+                blk, state = self._get_block_and_state_from_mark(mark)
+                state_copy = state.copy()
+                self.__clear_after_callsite(state_copy)
+                parent_contexts.append((blk, state_copy))
 
-            common_instruction_state.used_arguments = set.union(
-                *[p.used_arguments for p in previous_instruction_states]
-            )
+            # 2. Iteratively merge
+            # We treat the first parent as the 'accumulator'
+            current_blk, current_state = parent_contexts[0]
 
-            self.instructions_state[self.current_inst] = common_instruction_state
+            for next_blk, next_state in parent_contexts[1:]:
+                common_ancestor_addr = self.bin_func.common_ancestor(current_blk, next_blk)
+                common_condsite = self.addr_to_codeflow_conditional_site.get(common_ancestor_addr, None)
+
+                if common_condsite:
+                    # STRICTLY MATCHING ORIGINAL LOGIC:
+                    # Original: if self.bin_func.is_ancestor(blk_a.start, common_condsite.iffalse):
+                    # We map blk_a -> current_blk (x), blk_b -> next_blk (y)
+
+                    if self.bin_func.is_ancestor(current_blk.start, common_condsite.iffalse):
+                        iftrue_state, iffalse_state = current_state, next_state
+                    else:
+                        iffalse_state, iftrue_state = current_state, next_state
+
+                    current_state = self._merge_instruction_states(common_condsite, iftrue_state, iffalse_state)
+                current_blk = next_blk
+
+            self.instructions_state[self.current_inst] = current_state
 
         if self.current_inst in self.loops_dict_start_address:
-            for loop in self.loops_dict[self.current_inst]:
-                for blk in loop.blocks:
-                    current_blk = self.bin_func.blocks_dict[blk]
-                    current_address = current_blk.start
-                    while current_address < current_blk.end:
-                        for op in self.bin_func.opcodes[current_address].ops:
-                            if op.output is None:
-                                continue
-
-                            space = op.output.space.name
-                            if space != "register":
-                                continue
-
-                            self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
-                            self.instructions_state[self.current_inst].used_arguments.add(op.output.offset)
-                        current_address += self.bin_func.opcodes[current_address].bytes_size
+            self._clear_looped_registers()
 
         self.previous_marks = [self.current_inst]
+
+    def _clear_looped_registers(self):
+        for loop in self.loops_dict[self.current_inst]:
+            for blk in loop.blocks:
+                current_blk = self.bin_func.blocks_dict[blk]
+                current_address = current_blk.start
+                while current_address < current_blk.end:
+                    for op in self.bin_func.opcodes[current_address].ops:
+                        if op.output is None or op.output.space.name != "register":
+                            continue
+
+                        self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
+                        self.instructions_state[self.current_inst].used_arguments.add(op.output.offset)
+                    current_address += self.bin_func.opcodes[current_address].bytes_size
 
     def _handle_copy(self, op: pypcode.PcodeOp):
         self.handle_put(op.output, self.handle_get(op.inputs[0]))

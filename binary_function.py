@@ -219,7 +219,11 @@ class BinaryFunction:
     def is_ancestor(self, addr1: int, addr2: int) -> bool:
         return self.code_flow_graph.is_ancestor(addr1, addr2)
 
-    def common_ancestor(self, addr1: int, addr2: int) -> int:
+    def common_ancestor(self, addr1: int | FunctionBlock, addr2: int | FunctionBlock) -> int:
+        if isinstance(addr1, FunctionBlock):
+            addr1 = addr1.start
+        if isinstance(addr2, FunctionBlock):
+            addr2 = addr2.start
         return self.code_flow_graph.first_common_ancestor(addr1, addr2)
 
 
