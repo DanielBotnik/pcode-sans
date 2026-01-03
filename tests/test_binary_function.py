@@ -159,3 +159,14 @@ class TestReturnBlocks:
         assert 0x00482E7C in bin_func.return_blocks
         assert 0x00482EC4 in bin_func.return_blocks
         assert 0x00482ED0 in bin_func.return_blocks
+
+    def test_branch_outside_of_function_is_return_block(self):
+        # EVP_EncryptFinal function in sshd binary
+        CODE = b"\x08\x12\x3b\x95\x00\x00\x00\x00"
+        ADDR = 0x0048EFA8
+
+        project = Project("MIPS:BE:32:default")
+        bin_func = BinaryFunction(ADDR, CODE, project)
+
+        assert len(bin_func.return_blocks) == 1
+        assert ADDR in bin_func.return_blocks

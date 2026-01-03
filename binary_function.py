@@ -139,6 +139,8 @@ class BinaryFunction:
         if self.start < branch_addr <= self.end:  # Jumping outside of the function
             self.code_flow_graph.add_edge(blk.start, branch_addr)
             self._add_address_to_visit(branch_addr)
+        else:
+            self.return_blocks[blk.start] = blk
 
         blk.end = self._next_address(addr) - 1
         return True
