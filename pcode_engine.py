@@ -69,7 +69,7 @@ class Engine:
 
         for current_addr in self.bin_func.code_flow_graph.traverse():
             blk = self.bin_func.blocks_dict_start_address[current_addr]
-            parents = self.bin_func.code_flow_graph.get_parnets(current_addr)
+            parents = self.bin_func.code_flow_graph.get_parents(current_addr)
             self.previous_marks = [self.bin_func.blocks_dict[parent].last_instruction_addr for parent in parents]
             self._analyze_block(blk)
 
