@@ -82,7 +82,7 @@ class BinaryOp:
         ">=": lambda a, b: int(operator.ge(a, b)),
     }
     _ASSOCIATIVE_OPS = {"+", "*", "&", "|", "^"}
-    _COMPERISON_OPS = {"==", "!=", "<", "<=", ">", ">="}
+    _COMPARISON_OPS = {"==", "!=", "<", "<=", ">", ">="}
     _MONOID = {"+": 0, "*": 1, "|": 0, "^": 0, "-": 0}
 
     @staticmethod
@@ -93,7 +93,7 @@ class BinaryOp:
         elif isinstance(left, BinaryOp) and isinstance(right, int):
             if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
                 return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
-            elif left.op in BinaryOp._COMPERISON_OPS and right == 0:
+            elif left.op in BinaryOp._COMPARISON_OPS and right == 0:
                 if op == "!=":
                     return left
                 elif op == "==":
