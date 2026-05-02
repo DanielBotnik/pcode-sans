@@ -73,7 +73,7 @@ class TestMemoryAccess:
         assert len(engine.memory_accesses) == 2
         base_access = MemoryAccess(0x00445BDC, Arg(0), 0, MemoryAccessType.LOAD)
         assert base_access in engine.memory_accesses
-        assert MemoryAccess(0x00445BE0, base_access, 8, MemoryAccessType.STORE, Arg(1))
+        assert MemoryAccess(0x00445BE0, base_access, 8, MemoryAccessType.STORE, Arg(1)) in engine.memory_accesses
 
     def test_store_memory_access_with_callsite_stored_value(self):
         # sshd binary `cms_Data_create` function
