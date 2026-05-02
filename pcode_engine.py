@@ -396,7 +396,7 @@ class Engine:
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
     def _handle_subpiece(self, op: pypcode.PcodeOp):
-        # Assumming X = SUBPIECE(X, N) for now
+        # Assuming X = SUBPIECE(X, N) for now
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
     def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> ConditionalSite:
