@@ -12,6 +12,9 @@ from project import Project
 
 from collections import deque
 
+# P-code address used as sentinel for conditional moves (CMOV-like patterns)
+CBRANCH_SKIP_ADDR = 2
+
 
 @dataclass
 class AddressOpcodes:
@@ -117,7 +120,7 @@ class BinaryFunction:
 
     def _handle_cbranch(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
         branch_addr = op.inputs[0].offset
-        if branch_addr == 2:  # This means skip instructions
+        if branch_addr == CBRANCH_SKIP_ADDR:
             return
 
         self.code_flow_graph.add_edge(blk.start, branch_addr)

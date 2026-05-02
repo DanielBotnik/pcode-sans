@@ -19,7 +19,7 @@ from engine_types import (
 )
 from typing import Any, Callable, Optional
 from frozendict import frozendict
-from binary_function import BinaryFunction, FunctionBlock
+from binary_function import BinaryFunction, CBRANCH_SKIP_ADDR, FunctionBlock
 from project import Project
 
 
@@ -402,7 +402,7 @@ class Engine:
     def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> ConditionalSite:
         condsite = ConditionalSite(self.current_inst, condition, goto_iftrue, goto_iffalse)
         self.conditional_sites.append(condsite)
-        if goto_iftrue != 2:
+        if goto_iftrue != CBRANCH_SKIP_ADDR:
             self.addr_to_codeflow_conditional_site[self.current_blk.start] = condsite
 
         loops = self.loops_dict.get(self.current_inst, None)
@@ -435,7 +435,7 @@ class Engine:
         if isinstance(condition, int):  # Sometimes the result is known at analysis time, for example LL/SC instructions
             return
 
-        if goto_iftrue == 2:
+        if goto_iftrue == CBRANCH_SKIP_ADDR:
             self.__conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
             return
 

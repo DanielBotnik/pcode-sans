@@ -10,6 +10,7 @@ from project import Project
 LoopsDict: TypeAlias = Mapping[int, list[Loop]]
 
 
+
 def repr_or_hexint(val: Any) -> str:
     if isinstance(val, int):
         return hex(val)
