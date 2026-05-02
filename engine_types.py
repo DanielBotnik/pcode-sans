@@ -193,8 +193,12 @@ class MemoryAccess:
         if not isinstance(other, MemoryAccess):
             return False
         return (
-            self.base == other.base
+            self.addr == other.addr
+            and self.base == other.base
             and self.offset == other.offset
             and self.access_type == other.access_type
             and self.stored_value == other.stored_value
         )
+
+    def __hash__(self):
+        return hash((self.addr, self.base, self.offset, self.access_type, self.stored_value))

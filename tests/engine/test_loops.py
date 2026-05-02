@@ -20,7 +20,7 @@ class TestLoops:
             blocks={0x0043F934, 0x0043F940, 0x0043F94C},
             exit_conditions={
                 0x43F938: BinaryOp(MemoryAccess(0x43F934, base, 0x0, MemoryAccessType.LOAD), 0x0, "=="),
-                0x43F944: BinaryOp(MemoryAccess(0x43F934, base, 0x4, MemoryAccessType.LOAD), Arg(0), "=="),
+                0x43F944: BinaryOp(MemoryAccess(0x43F940, base, 0x4, MemoryAccessType.LOAD), Arg(0), "=="),
             },
         )
         assert engine.loops_dict_start_address[0x43F934] == [expected_loop]
@@ -108,10 +108,10 @@ class TestLoops:
             start=0x00572F24,
             blocks={0x00572F24, 0x00572F48, 0x00572F50, 0x00572F58, 0x00572F6C, 0x00572F7C},
             exit_conditions={
-                0x00572F50: BinaryOp(MemoryAccess(0x00572F44, left_reg, 0, MemoryAccessType.LOAD), right_side, "=="),
+                0x00572F50: BinaryOp(MemoryAccess(0x00572F40, left_reg, 0, MemoryAccessType.LOAD), right_side, "=="),
                 0x00572F5C: BinaryOp(MemoryAccess(0x00572F58, left_reg, 1, MemoryAccessType.LOAD), right_side, "=="),
-                0x00572F6C: BinaryOp(MemoryAccess(0x00572F60, left_reg, 2, MemoryAccessType.LOAD), right_side, "=="),
-                0x00572F7C: BinaryOp(MemoryAccess(0x00572F70, left_reg, 3, MemoryAccessType.LOAD), right_side, "=="),
+                0x00572F6C: BinaryOp(MemoryAccess(0x00572F5C, left_reg, 2, MemoryAccessType.LOAD), right_side, "=="),
+                0x00572F7C: BinaryOp(MemoryAccess(0x00572F6C, left_reg, 3, MemoryAccessType.LOAD), right_side, "=="),
             },
         )
 
@@ -222,7 +222,7 @@ class TestLoops:
                             iftrue=MemoryAccess(0x56FDD8, Arg(1), 2, MemoryAccessType.LOAD),
                             iffalse=MemoryAccess(0x56FDF8, Register(32, 0x56FDF8, project), 1, MemoryAccessType.LOAD),
                         ),
-                        iffalse=MemoryAccess(0x56FE0C0, Register(32, 0x56FDF8, project), 2, MemoryAccessType.LOAD),
+                        iffalse=MemoryAccess(0x56FE0C, Register(32, 0x56FDF8, project), 2, MemoryAccessType.LOAD),
                     ),
                     0,
                     "==",
