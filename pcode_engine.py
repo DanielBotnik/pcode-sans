@@ -503,7 +503,7 @@ class Engine:
             self.memory_accesses.append(res)
             return
 
-        if isinstance(left, Register) and left.offset == arch.stackpointer:
+        else:
             signed_value = ctypes.c_int32(right).value
             if signed_value >= arch.stack_argument_offset:
                 res = Arg((signed_value) // 4)
