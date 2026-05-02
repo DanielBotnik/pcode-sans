@@ -370,9 +370,9 @@ class Engine:
             self.instructions_state[self.current_inst].stack[signed_offset] = val
 
     def _handle_int_2comp(self, op: pypcode.PcodeOp):
-        val = op.inputs[0].offset  # INT_2COMP is always int values.
+        val = self.handle_get(op.inputs[0])
 
-        self.handle_put(op.output, -val)
+        self.handle_put(op.output, BinaryOp.create_binop(0, val, "-"))
 
     def _handle_call(self, op: pypcode.PcodeOp):
         self._handle_callind(op)
