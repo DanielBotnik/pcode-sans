@@ -117,7 +117,7 @@ class BinaryFunction:
 
     def _handle_cbranch(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
         branch_addr = op.inputs[0].offset
-        if branch_addr == 2:  # This means skip insturctions
+        if branch_addr == 2:  # This means skip instructions
             return
 
         self.code_flow_graph.add_edge(blk.start, branch_addr)
