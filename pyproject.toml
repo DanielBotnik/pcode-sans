@@ -1,7 +1,7 @@
 [project]
-name = "your-project-name"
+name = "pcode-sans"
 version = "0.1.0"
-description = "Short description of your project"
+description = "P-Code static analysis engine for binary functions"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
