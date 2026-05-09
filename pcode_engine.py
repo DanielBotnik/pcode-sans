@@ -245,83 +245,66 @@ class Engine:
         state = self.instructions_state[mark]
         return blk, state.goto_state.get(self.current_inst, state)
 
-    def _handle_first_block(self):
-        self.instructions_state[self.current_inst] = InstructionState()
-
-    def _handle_one_previous_parent(self):
-        previous_state = self.instructions_state[self.previous_marks[0]]
-        current_state = previous_state.goto_state.get(self.current_inst, previous_state).copy()
-        current_state.clear_after_callsite(self.project.arch_regs)
-        self.instructions_state[self.current_inst] = current_state
-
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
         self._unfinished_condsite = None
         self._conditional_move_condition = None
 
-        if self.current_inst in self.loops_dict_start_address:
-            good_marks = []
-            loops = self.loops_dict[self.current_inst]
-            loops_for_marks = loops.copy()
-
-            if len(loops) == 2 and loops[0].start != loops[1].start:
-                if loops[0].blocks & loops[1].blocks == loops[0].blocks:
-                    loops_for_marks = [loops[0]]
-                elif loops[0].blocks & loops[1].blocks == loops[1].blocks:
-                    loops_for_marks = [loops[1]]
-
-            for mark in self.previous_marks:
-                # keep mark if it's NOT inside any of the loops starting at current_inst
-                if not any(self.bin_func.blocks_dict[mark].start in loop.blocks for loop in loops_for_marks):
-                    good_marks.append(mark)
-            self.previous_marks = good_marks
-
-        if len(self.previous_marks) == 0:  # first block
-            self._handle_first_block()
-
-        elif len(self.previous_marks) == 1:
-            self._handle_one_previous_parent()
-
-        else:
-            # --- Generic N-Parent Merge Logic ---
-
-            # 1. Collect all parent contexts (Block, State)
-            # We copy the state to ensure we don't mutate the original instruction state
-            # when clearing callsites.
-            parent_contexts = []
-            for mark in self.previous_marks:
-                blk, state = self._get_block_and_state_from_mark(mark)
-                state_copy = state.copy()
-                state_copy.clear_after_callsite(self.project.arch_regs)
-                parent_contexts.append((blk, state_copy))
-
-            # 2. Iteratively merge
-            # We treat the first parent as the 'accumulator'
-            current_blk, current_state = parent_contexts[0]
-
-            for next_blk, next_state in parent_contexts[1:]:
-                common_ancestor_addr = self.bin_func.common_ancestor(current_blk, next_blk)
-                common_condsite = self.addr_to_codeflow_conditional_site.get(common_ancestor_addr, None)
-
-                if common_condsite:
-                    # STRICTLY MATCHING ORIGINAL LOGIC:
-                    # Original: if self.bin_func.is_ancestor(blk_a.start, common_condsite.iffalse):
-                    # We map blk_a -> current_blk (x), blk_b -> next_blk (y)
-
-                    if self.bin_func.is_ancestor(current_blk.start, common_condsite.iffalse):
-                        iftrue_state, iffalse_state = current_state, next_state
-                    else:
-                        iffalse_state, iftrue_state = current_state, next_state
-
-                    current_state = iftrue_state.merge(iffalse_state, common_condsite)
-                current_blk = next_blk
-
-            self.instructions_state[self.current_inst] = current_state
+        self._filter_loop_back_edges()
+        self.instructions_state[self.current_inst] = self._compute_entry_state()
 
         if self.current_inst in self.loops_dict_start_address:
             self._clear_looped_registers()
 
         self.previous_marks = [self.current_inst]
+
+    def _filter_loop_back_edges(self):
+        if self.current_inst not in self.loops_dict_start_address:
+            return
+
+        loops = self.loops_dict[self.current_inst]
+        if len(loops) == 2 and loops[0].start != loops[1].start:
+            if loops[0].blocks <= loops[1].blocks:
+                loops = [loops[0]]
+            elif loops[1].blocks <= loops[0].blocks:
+                loops = [loops[1]]
+
+        self.previous_marks = [
+            mark for mark in self.previous_marks
+            if not any(self.bin_func.blocks_dict[mark].start in loop.blocks for loop in loops)
+        ]
+
+    def _compute_entry_state(self) -> InstructionState:
+        if not self.previous_marks:
+            return InstructionState()
+
+        if len(self.previous_marks) == 1:
+            _, state = self._get_parent_state(self.previous_marks[0])
+            return state
+
+        parent_contexts = [self._get_parent_state(mark) for mark in self.previous_marks]
+        return self._merge_parent_contexts(parent_contexts)
+
+    def _get_parent_state(self, mark: int) -> tuple[FunctionBlock, InstructionState]:
+        blk, state = self._get_block_and_state_from_mark(mark)
+        state_copy = state.copy()
+        state_copy.clear_after_callsite(self.project.arch_regs)
+        return blk, state_copy
+
+    def _merge_parent_contexts(
+        self, parent_contexts: list[tuple[FunctionBlock, InstructionState]]
+    ) -> InstructionState:
+        current_blk, current_state = parent_contexts[0]
+        for next_blk, next_state in parent_contexts[1:]:
+            common_ancestor_addr = self.bin_func.common_ancestor(current_blk, next_blk)
+            common_condsite = self.addr_to_codeflow_conditional_site.get(common_ancestor_addr)
+            if common_condsite:
+                if self.bin_func.is_ancestor(current_blk.start, common_condsite.iffalse):
+                    current_state = current_state.merge(next_state, common_condsite)
+                else:
+                    current_state = next_state.merge(current_state, common_condsite)
+            current_blk = next_blk
+        return current_state
 
     def _clear_looped_registers(self):
         for loop in self.loops_dict[self.current_inst]:
