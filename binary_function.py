@@ -1,13 +1,10 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
 
 import pypcode
 
 from dataclasses import dataclass, field
 from cfg import CodeFlowGraph
-
-if TYPE_CHECKING:
-    from engine_types import BinaryOp, LoopsDict
+from engine_types import Loop, LoopsDict
 from project import Project
 
 from collections import deque
@@ -261,8 +258,3 @@ class FunctionBlock:
             addr = next_addr
 
 
-@dataclass
-class Loop:
-    start: int
-    blocks: set[int] = field(default_factory=set)
-    exit_conditions: dict[int, BinaryOp] = field(default_factory=dict)

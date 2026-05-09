@@ -1,4 +1,5 @@
-from binary_function import BinaryFunction, Loop
+from binary_function import BinaryFunction
+from engine_types import Loop
 from pcode_engine import Engine
 from project import Project
 from engine_types import Arg, BinaryOp, ConditionalExpression, MemoryAccess, MemoryAccessType, Register, UnaryOp

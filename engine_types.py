@@ -1,13 +1,10 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Mapping, TypeAlias
 import operator
 
-from binary_function import BinaryFunction, Loop
 from project import Project
-
-LoopsDict: TypeAlias = Mapping[int, list[Loop]]
 
 
 
@@ -203,3 +200,13 @@ class MemoryAccess:
 
     def __hash__(self):
         return hash((self.addr, self.base, self.offset, self.access_type, self.stored_value))
+
+
+@dataclass
+class Loop:
+    start: int
+    blocks: set[int] = field(default_factory=set)
+    exit_conditions: dict[int, BinaryOp] = field(default_factory=dict)
+
+
+LoopsDict: TypeAlias = Mapping[int, list[Loop]]
