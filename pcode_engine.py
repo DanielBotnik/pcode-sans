@@ -40,7 +40,7 @@ class InstructionState:
         new_state.ram = self.ram.copy()
         new_state.stack = self.stack.copy()
         new_state.last_callsite = self.last_callsite
-        new_state.used_arguments = self.used_arguments
+        new_state.used_arguments = self.used_arguments.copy()
         return new_state
 
 
@@ -122,7 +122,7 @@ class Engine:
                 # Binary Arithmetic Operations
                 pypcode.OpCode.INT_ADD: partial(self._handle_binary_op, op_symbol="+"),
                 pypcode.OpCode.INT_MULT: partial(self._handle_binary_op, op_symbol="*"),
-                # Binary Bitshits Operations
+                # Binary Bitshifts Operations
                 pypcode.OpCode.INT_LEFT: partial(self._handle_binary_op, op_symbol="<<"),
                 pypcode.OpCode.INT_RIGHT: partial(self._handle_binary_op, op_symbol=">>"),
                 pypcode.OpCode.INT_AND: partial(self._handle_binary_op, op_symbol="&"),
@@ -131,7 +131,7 @@ class Engine:
                 pypcode.OpCode.INT_OR: partial(self._handle_binary_op, op_symbol="|"),
                 # Binary Conditional Operations
                 pypcode.OpCode.INT_EQUAL: partial(self._handle_binary_op, op_symbol="=="),
-                pypcode.OpCode.INT_SLESS: partial(self._handle_binary_op, op_symbol="<"),
+                pypcode.OpCode.INT_SLESS: partial(self._handle_binary_op, op_symbol="<", signed=True),
                 pypcode.OpCode.INT_LESS: partial(self._handle_binary_op, op_symbol="<"),
                 pypcode.OpCode.INT_SLESSEQUAL: partial(self._handle_binary_op, op_symbol="<=", signed=True),
                 pypcode.OpCode.INT_NOTEQUAL: partial(self._handle_binary_op, op_symbol="!="),

@@ -1,4 +1,3 @@
-from functools import lru_cache
 from typing import Mapping
 import pypcode
 
@@ -46,6 +45,7 @@ class Project:
             raise ValueError("Could not find stackpointer register in cspec")
         sp_off = context.registers[sp_tag].offset
 
+        ret_off = None
         for label in cspec.iterfind("prototype/output/pentry[register]"):
             if label.get("metatype") is not None:
                 continue
@@ -59,6 +59,9 @@ class Project:
                 continue
 
             ret_off = context.registers[reg_name].offset
+
+        if ret_off is None:
+            raise ValueError("Could not find return register in cspec")
 
         args: dict[int, int] = dict()
         for label in cspec.iterfind("default_proto/prototype/input/pentry[register]"):
@@ -75,6 +78,7 @@ class Project:
 
             args[len(args)] = context.registers[reg_name].offset
 
+        stack_argument_offset = None
         for label in cspec.iterfind("default_proto/prototype/input/pentry/addr"):
             if label.get("space") != "stack":
                 continue
@@ -84,6 +88,9 @@ class Project:
                 continue
 
             stack_argument_offset = int(reg_offset)
+
+        if stack_argument_offset is None:
+            raise ValueError("Could not find stack argument offset in cspec")
 
         unaffected = set()
         for label in cspec.iterfind("default_proto/prototype/unaffected/register"):

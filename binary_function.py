@@ -82,7 +82,7 @@ class BinaryFunction:
                 current_size = sum([x.size for x in op.inputs])
         self.opcodes[current_address] = AddressOpcodes(opcodes[last_index:], current_size)
 
-    def __fix_splited_block(self, blk_addr: int, blk: FunctionBlock):
+    def __fix_split_block(self, blk_addr: int, blk: FunctionBlock):
         self.blocks_dict_start_address[blk_addr] = blk
         for addr in list(self.blocks_dict.keys()):
             if blk.start <= addr <= blk.end:
@@ -94,8 +94,8 @@ class BinaryFunction:
         blk_a = FunctionBlock(the_blk.start, self, current_address - 1)
         blk_b = FunctionBlock(current_address, self, end=the_blk.end)
 
-        self.__fix_splited_block(the_blk.start, blk_a)
-        self.__fix_splited_block(current_address, blk_b)
+        self.__fix_split_block(the_blk.start, blk_a)
+        self.__fix_split_block(current_address, blk_b)
 
         if the_blk.start in self.return_blocks:
             self.return_blocks.pop(the_blk.start)
