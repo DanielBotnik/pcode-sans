@@ -409,48 +409,44 @@ class Engine:
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
     def _handle_load(self, op: pypcode.PcodeOp):
-        arch = self.project.arch_regs
-        state = self.instructions_state[self.current_inst]
-
         space = op.inputs[0].getSpaceFromConst().name
-        offset = self.handle_get(op.inputs[1])
-
         if space != "ram":
             raise NotImplementedError(f"LOAD to space '{space}' is not implemented yet.")
+        offset = self.handle_get(op.inputs[1])
+        self.handle_put(op.output, self._resolve_ram_load(offset))
 
+    def _resolve_ram_load(self, offset: Any) -> Any:
         if isinstance(offset, (int, UnaryOp)):
-            self.handle_put(op.output, UnaryOp(offset, "*"))
-            return
+            return UnaryOp(offset, "*")
 
         if not isinstance(offset, BinaryOp):
-            res = MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.LOAD)
-            self.handle_put(op.output, res)
-            self.memory_accesses.append(res)
-            return
+            return self._record_load(offset, 0)
 
-        left = offset.left
-        right = offset.right
+        left, right = offset.left, offset.right
 
         if not isinstance(left, Register) or left.offset != self.project.arch_regs.stackpointer:
-            res = MemoryAccess(self.current_inst, left, right, MemoryAccessType.LOAD)
-            self.handle_put(op.output, res)
-            self.memory_accesses.append(res)
-            return
+            return self._record_load(left, right)
 
-        else:
-            signed_value = ctypes.c_int32(right).value
-            if signed_value >= arch.stack_argument_offset:
-                res = Arg((signed_value) // arch.pointer_size)
-            else:
-                res = state.stack.get(signed_value, None)
-                if res is None:
-                    unsigned_value = ctypes.c_uint32(right).value
-                    res = MemoryAccess(
-                        self.current_inst, self._first_stack_access, unsigned_value, MemoryAccessType.LOAD
-                    )
-                    state.stack[signed_value] = res
+        return self._resolve_stack_load(right)
 
-            self.handle_put(op.output, res)
+    def _record_load(self, base: Any, offset: Any) -> MemoryAccess:
+        res = MemoryAccess(self.current_inst, base, offset, MemoryAccessType.LOAD)
+        self.memory_accesses.append(res)
+        return res
+
+    def _resolve_stack_load(self, right: Any) -> Any:
+        arch = self.project.arch_regs
+        state = self.instructions_state[self.current_inst]
+        signed_value = ctypes.c_int32(right).value
+
+        if signed_value >= arch.stack_argument_offset:
+            return Arg(signed_value // arch.pointer_size)
+
+        res = state.stack.get(signed_value)
+        if res is None:
+            res = MemoryAccess(self.current_inst, self._first_stack_access, ctypes.c_uint32(right).value, MemoryAccessType.LOAD)
+            state.stack[signed_value] = res
+        return res
 
     def _handle_get_register(self, offset: int) -> Any:
         state = self.instructions_state[self.current_inst]
