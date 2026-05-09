@@ -524,7 +524,7 @@ class Engine:
         else:
             signed_value = ctypes.c_int32(right).value
             if signed_value >= arch.stack_argument_offset:
-                res = Arg((signed_value) // 4)
+                res = Arg((signed_value) // arch.pointer_size)
             else:
                 res = state.stack.get(signed_value, None)
                 if res is None:
@@ -606,7 +606,7 @@ class Engine:
 
             while stack_argument_offset in state.stack:
                 args[arg_num] = state.stack[stack_argument_offset]
-                stack_argument_offset += 0x4
+                stack_argument_offset += arch.pointer_size
                 arg_num += 1
 
         max_reg_arg = min(max(args.keys(), default=0), len(arch.arguments))
