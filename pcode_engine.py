@@ -20,6 +20,7 @@ from engine_types import (
 from typing import Any, Callable, Optional
 from frozendict import frozendict
 from binary_function import BinaryFunction, CBRANCH_SKIP_ADDR, FunctionBlock
+from project import ArchRegisters
 
 
 class InstructionState:
@@ -41,6 +42,43 @@ class InstructionState:
         new_state.last_callsite = self.last_callsite
         new_state.used_arguments = self.used_arguments.copy()
         return new_state
+
+    @staticmethod
+    def _merge_dicts(condsite: ConditionalSite, iftrue: dict, iffalse: dict) -> dict:
+        merged = {}
+        for k in iftrue.keys() | iffalse.keys():
+            t = iftrue.get(k)
+            f = iffalse.get(k)
+            if k in iftrue and k in iffalse:
+                merged[k] = t if t == f else ConditionalExpression(condsite, t, f)
+            else:
+                merged[k] = t if k in iftrue else f
+        return merged
+
+    def merge(self, other: InstructionState, condsite: ConditionalSite) -> InstructionState:
+        merged_state = InstructionState()
+        merged_state.regs = InstructionState._merge_dicts(condsite, self.regs, other.regs)
+        merged_state.unique = InstructionState._merge_dicts(condsite, self.unique, other.unique)
+        merged_state.ram = InstructionState._merge_dicts(condsite, self.ram, other.ram)
+        merged_state.stack = InstructionState._merge_dicts(condsite, self.stack, other.stack)
+        merged_state.used_arguments = self.used_arguments | other.used_arguments
+        return merged_state
+
+    def clear_after_callsite(self, arch: ArchRegisters) -> None:
+        if self.last_callsite is None:
+            return
+        for arg in self.last_callsite.args.values():
+            if not isinstance(arg, BinaryOp):
+                continue
+            if not isinstance(arg.left, Register) or not isinstance(arg.right, int):
+                continue
+            if arg.left.offset == arch.stackpointer:
+                self.stack.pop(ctypes.c_int32(arg.right).value, None)
+        for reg in list(self.regs.keys()):
+            if reg not in arch.unaffected:
+                del self.regs[reg]
+        self.regs[arch.ret] = self.last_callsite
+        self.last_callsite = None
 
 
 class _FakeAddrSpace:
@@ -202,47 +240,6 @@ class Engine:
                 self._handlers[op.opcode](op)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
-    def _clear_after_callsite(self, instruction_state: InstructionState) -> None:
-        if instruction_state.last_callsite is None:
-            return
-
-        for arg in instruction_state.last_callsite.args.values():
-            if not isinstance(arg, BinaryOp):
-                continue
-
-            if not isinstance(arg.left, Register) or not isinstance(arg.right, int):
-                continue
-
-            if arg.left.offset == self.project.arch_regs.stackpointer:
-                instruction_state.stack.pop(ctypes.c_int32(arg.right).value, None)
-
-        for reg in list(instruction_state.regs.keys()):
-            if reg not in self.project.arch_regs.unaffected:
-                del instruction_state.regs[reg]
-
-        instruction_state.regs[self.project.arch_regs.ret] = instruction_state.last_callsite
-        instruction_state.last_callsite = None
-
-    def _merge_dicts(self, condsite, iftrue, iffalse):
-        """
-        Merge two dict-like states using ConditionalExpression when values differ.
-        If a key has the same value in both branches, keep that value.
-        If a key exists in only one branch, keep that value.
-        """
-        merged = {}
-
-        for k in iftrue.keys() | iffalse.keys():  # union of keys
-            t = iftrue.get(k)
-            f = iffalse.get(k)
-
-            if k in iftrue and k in iffalse:
-                merged[k] = t if t == f else ConditionalExpression(condsite, t, f)
-            else:
-                # appears in only one dict
-                merged[k] = t if k in iftrue else f
-
-        return merged
-
     def _get_block_and_state_from_mark(self, mark: int) -> tuple[FunctionBlock, InstructionState]:
         blk = self.bin_func.blocks_dict[mark]
         state = self.instructions_state[mark]
@@ -254,22 +251,8 @@ class Engine:
     def _handle_one_previous_parent(self):
         previous_state = self.instructions_state[self.previous_marks[0]]
         current_state = previous_state.goto_state.get(self.current_inst, previous_state).copy()
-        self._clear_after_callsite(current_state)
+        current_state.clear_after_callsite(self.project.arch_regs)
         self.instructions_state[self.current_inst] = current_state
-
-    def _merge_instruction_states(
-        self, condsite: ConditionalSite, iftrue: InstructionState, iffalse: InstructionState
-    ) -> InstructionState:
-        """
-        Helper to merge two states into a new state based on a conditional site.
-        """
-        merged_state = InstructionState()
-        merged_state.regs = self._merge_dicts(condsite, iftrue.regs, iffalse.regs)
-        merged_state.unique = self._merge_dicts(condsite, iftrue.unique, iffalse.unique)
-        merged_state.ram = self._merge_dicts(condsite, iftrue.ram, iffalse.ram)
-        merged_state.stack = self._merge_dicts(condsite, iftrue.stack, iffalse.stack)
-        merged_state.used_arguments = set.union(iftrue.used_arguments, iffalse.used_arguments)
-        return merged_state
 
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
@@ -309,7 +292,7 @@ class Engine:
             for mark in self.previous_marks:
                 blk, state = self._get_block_and_state_from_mark(mark)
                 state_copy = state.copy()
-                self._clear_after_callsite(state_copy)
+                state_copy.clear_after_callsite(self.project.arch_regs)
                 parent_contexts.append((blk, state_copy))
 
             # 2. Iteratively merge
@@ -330,7 +313,7 @@ class Engine:
                     else:
                         iffalse_state, iftrue_state = current_state, next_state
 
-                    current_state = self._merge_instruction_states(common_condsite, iftrue_state, iffalse_state)
+                    current_state = iftrue_state.merge(iffalse_state, common_condsite)
                 current_blk = next_blk
 
             self.instructions_state[self.current_inst] = current_state
