@@ -71,15 +71,15 @@ class Engine:
         self.current_inst: int = 0
         self.previous_marks: list[int] = list()
         self._handlers: dict[pypcode.OpCode, Callable[[pypcode.PcodeOp], None]] = {}
-        self.__put_handlers: dict[str, Callable[[int, Any], None]] = {}
-        self.__get_handlers: dict[str, Callable[[int], Any]] = {}
+        self._put_handlers: dict[str, Callable[[int, Any], None]] = {}
+        self._get_handlers: dict[str, Callable[[int], Any]] = {}
         self.callsites: list[CallSite] = []
         self.conditional_sites: list[ConditionalSite] = []
         self.memory_accesses: list[MemoryAccess] = []
         self.addr_to_codeflow_conditional_site: dict[int, ConditionalSite] = {}
         self.current_blk: FunctionBlock = FunctionBlock(0, self.bin_func)  # Temporal initialization
-        self.__unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
-        self.__conditional_move_condition: Optional[ConditionalSite] = None
+        self._unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
+        self._conditional_move_condition: Optional[ConditionalSite] = None
         self._first_stack_access: Optional[Register] = None
         self._return_values: Optional[set[Any]] = None
 
@@ -177,14 +177,14 @@ class Engine:
             }
         )
 
-        self.__put_handlers.update(
+        self._put_handlers.update(
             {
                 "register": self._handle_put_register,
                 "unique": self._handle_put_unique,
             }
         )
 
-        self.__get_handlers.update(
+        self._get_handlers.update(
             {
                 "register": self._handle_get_register,
                 "const": self._handle_get_const,
@@ -202,7 +202,7 @@ class Engine:
                 self._handlers[op.opcode](op)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
-    def __clear_after_callsite(self, instruction_state: InstructionState) -> None:
+    def _clear_after_callsite(self, instruction_state: InstructionState) -> None:
         if instruction_state.last_callsite is None:
             return
 
@@ -223,7 +223,7 @@ class Engine:
         instruction_state.regs[self.project.arch_regs.ret] = instruction_state.last_callsite
         instruction_state.last_callsite = None
 
-    def __merge_dicts(self, condsite, iftrue, iffalse):
+    def _merge_dicts(self, condsite, iftrue, iffalse):
         """
         Merge two dict-like states using ConditionalExpression when values differ.
         If a key has the same value in both branches, keep that value.
@@ -254,7 +254,7 @@ class Engine:
     def _handle_one_previous_parent(self):
         previous_state = self.instructions_state[self.previous_marks[0]]
         current_state = previous_state.goto_state.get(self.current_inst, previous_state).copy()
-        self.__clear_after_callsite(current_state)
+        self._clear_after_callsite(current_state)
         self.instructions_state[self.current_inst] = current_state
 
     def _merge_instruction_states(
@@ -264,17 +264,17 @@ class Engine:
         Helper to merge two states into a new state based on a conditional site.
         """
         merged_state = InstructionState()
-        merged_state.regs = self.__merge_dicts(condsite, iftrue.regs, iffalse.regs)
-        merged_state.unique = self.__merge_dicts(condsite, iftrue.unique, iffalse.unique)
-        merged_state.ram = self.__merge_dicts(condsite, iftrue.ram, iffalse.ram)
-        merged_state.stack = self.__merge_dicts(condsite, iftrue.stack, iffalse.stack)
+        merged_state.regs = self._merge_dicts(condsite, iftrue.regs, iffalse.regs)
+        merged_state.unique = self._merge_dicts(condsite, iftrue.unique, iffalse.unique)
+        merged_state.ram = self._merge_dicts(condsite, iftrue.ram, iffalse.ram)
+        merged_state.stack = self._merge_dicts(condsite, iftrue.stack, iffalse.stack)
         merged_state.used_arguments = set.union(iftrue.used_arguments, iffalse.used_arguments)
         return merged_state
 
     def _handle_imark(self, op: pypcode.PcodeOp):
         self.current_inst = op.inputs[0].offset
-        self.__unfinished_condsite = None
-        self.__conditional_move_condition = None
+        self._unfinished_condsite = None
+        self._conditional_move_condition = None
 
         if self.current_inst in self.loops_dict_start_address:
             good_marks = []
@@ -309,7 +309,7 @@ class Engine:
             for mark in self.previous_marks:
                 blk, state = self._get_block_and_state_from_mark(mark)
                 state_copy = state.copy()
-                self.__clear_after_callsite(state_copy)
+                self._clear_after_callsite(state_copy)
                 parent_contexts.append((blk, state_copy))
 
             # 2. Iteratively merge
@@ -396,11 +396,11 @@ class Engine:
         self._handle_callind(op)
 
     def _create_callsite(self, target: Any) -> CallSite:
-        resolved_target = self.__extract_target(target)
-        args = self.__collect_call_arguments()
+        resolved_target = self._extract_target(target)
+        args = self._collect_call_arguments()
 
         callsite = CallSite(self.current_inst, resolved_target, frozendict(args))
-        self.__register_callsite(callsite)
+        self._register_callsite(callsite)
 
         return callsite
 
@@ -440,10 +440,10 @@ class Engine:
             self._create_callsite(goto_addr)
             return
 
-        if self.__unfinished_condsite is None:
+        if self._unfinished_condsite is None:
             return
 
-        self._create_condsite(self.__unfinished_condsite.condition, self.__unfinished_condsite.goto_iftrue, goto_addr)
+        self._create_condsite(self._unfinished_condsite.condition, self._unfinished_condsite.goto_iftrue, goto_addr)
 
     def _handle_cbranch(self, op: pypcode.PcodeOp):
         goto_iftrue = self.handle_get(op.inputs[0])
@@ -454,14 +454,14 @@ class Engine:
             return
 
         if goto_iftrue == CBRANCH_SKIP_ADDR:
-            self.__conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
+            self._conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
             return
 
         if goto_iffalse == goto_iftrue:
             self.instructions_state[self.current_inst].goto_state[goto_iftrue] = self.instructions_state[
                 self.current_inst
             ].copy()
-            self.__unfinished_condsite = _UnfinishedConditionalSite(condition, goto_iftrue)
+            self._unfinished_condsite = _UnfinishedConditionalSite(condition, goto_iftrue)
             return
 
         self._create_condsite(condition, goto_iftrue, goto_iffalse)
@@ -562,14 +562,14 @@ class Engine:
         return self.instructions_state[self.current_inst].unique.get(offset, None)
 
     def handle_get(self, input: pypcode.Varnode | _FakeVarnode) -> Any:
-        return self.__get_handlers[input.space.name](input.offset)
+        return self._get_handlers[input.space.name](input.offset)
 
     def _handle_put_register(self, offset: int, val: Any):
-        if self.__conditional_move_condition is None:
+        if self._conditional_move_condition is None:
             self.instructions_state[self.current_inst].regs[offset] = val
         else:
             self.instructions_state[self.current_inst].regs[offset] = ConditionalExpression(
-                self.__conditional_move_condition,
+                self._conditional_move_condition,
                 self.instructions_state[self.current_inst].regs[offset],
                 val,
             )
@@ -578,19 +578,19 @@ class Engine:
         self.instructions_state[self.current_inst].unique[offset] = val
 
     def handle_put(self, output: pypcode.Varnode | None, val: Any):
-        self.__put_handlers[output.space.name](output.offset, val)
+        self._put_handlers[output.space.name](output.offset, val)
 
-    def __extract_target(self, target: Any) -> Any:
+    def _extract_target(self, target: Any) -> Any:
         if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
             target = target.right
 
         return target
 
-    def __register_callsite(self, callsite: CallSite) -> None:
+    def _register_callsite(self, callsite: CallSite) -> None:
         self.callsites.append(callsite)
         self.instructions_state[self.current_inst].last_callsite = callsite
 
-    def __collect_call_arguments(self) -> dict[int, Any]:
+    def _collect_call_arguments(self) -> dict[int, Any]:
         state = self.instructions_state[self.current_inst]
         arch = self.project.arch_regs
 
