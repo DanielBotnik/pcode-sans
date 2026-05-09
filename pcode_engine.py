@@ -20,7 +20,6 @@ from engine_types import (
 from typing import Any, Callable, Optional
 from frozendict import frozendict
 from binary_function import BinaryFunction, CBRANCH_SKIP_ADDR, FunctionBlock
-from project import Project
 
 
 class InstructionState:
@@ -64,9 +63,9 @@ class _UnfinishedConditionalSite:
 
 class Engine:
 
-    def __init__(self, start: int, code: bytes, project: Project):
-        self.project = project
-        self.bin_func = BinaryFunction(start, code, project)
+    def __init__(self, bin_func: BinaryFunction):
+        self.project = bin_func.project
+        self.bin_func = bin_func
         self.instructions_state: dict[int, InstructionState] = dict()
         self.current_inst: int = 0
         self.previous_marks: list[int] = list()

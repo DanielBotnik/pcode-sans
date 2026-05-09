@@ -12,7 +12,7 @@ class TestLoops:
         ADDR = 0x0043F92C
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(ADDR, CODE, project)
+        engine = Engine(BinaryFunction(ADDR, CODE, project))
 
         base = Register(8, 0x43F934, project)
         expected_loop = Loop(
@@ -31,7 +31,7 @@ class TestLoops:
         ADDR = 0x0046FAF0
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(ADDR, CODE, project)
+        engine = Engine(BinaryFunction(ADDR, CODE, project))
 
         assert len(engine.loops_dict_start_address) == 1
 
@@ -62,7 +62,7 @@ class TestLoops:
         ADDR = 0x00572EE0
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(ADDR, CODE, project)
+        engine = Engine(BinaryFunction(ADDR, CODE, project))
 
         assert len(engine.loops_dict_start_address) == 2
 
@@ -124,7 +124,7 @@ class TestLoops:
         ADDR = 0x0056FD60
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(ADDR, CODE, project)
+        engine = Engine(BinaryFunction(ADDR, CODE, project))
 
         assert len(engine.loops_dict_start_address) == 4
 
