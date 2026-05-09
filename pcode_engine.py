@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from functools import partial
 
 import pypcode
 import ctypes
@@ -17,7 +16,7 @@ from engine_types import (
     MemoryAccessType,
     UnaryOp,
 )
-from typing import Any, Callable, Optional
+from typing import Any, Callable, ClassVar, Optional
 from frozendict import frozendict
 from binary_function import BinaryFunction, CBRANCH_SKIP_ADDR, FunctionBlock
 from project import ArchRegisters
@@ -101,15 +100,28 @@ class _UnfinishedConditionalSite:
 
 class Engine:
 
+    _BINARY_OP_SYMBOLS: ClassVar[dict[pypcode.OpCode, tuple[str, bool]]] = {
+        pypcode.OpCode.INT_ADD: ("+", False),
+        pypcode.OpCode.INT_MULT: ("*", False),
+        pypcode.OpCode.INT_LEFT: ("<<", False),
+        pypcode.OpCode.INT_RIGHT: (">>", False),
+        pypcode.OpCode.INT_AND: ("&", False),
+        pypcode.OpCode.INT_SUB: ("-", False),
+        pypcode.OpCode.INT_XOR: ("^", False),
+        pypcode.OpCode.INT_OR: ("|", False),
+        pypcode.OpCode.INT_EQUAL: ("==", False),
+        pypcode.OpCode.INT_SLESS: ("<", True),
+        pypcode.OpCode.INT_LESS: ("<", False),
+        pypcode.OpCode.INT_SLESSEQUAL: ("<=", True),
+        pypcode.OpCode.INT_NOTEQUAL: ("!=", False),
+    }
+
     def __init__(self, bin_func: BinaryFunction):
         self.project = bin_func.project
         self.bin_func = bin_func
         self.instructions_state: dict[int, InstructionState] = dict()
         self.current_inst: int = 0
         self.previous_marks: list[int] = list()
-        self._handlers: dict[pypcode.OpCode, Callable[[pypcode.PcodeOp], None]] = {}
-        self._put_handlers: dict[str, Callable[[int, Any], None]] = {}
-        self._get_handlers: dict[str, Callable[[int], Any]] = {}
         self.callsites: list[CallSite] = []
         self.conditional_sites: list[ConditionalSite] = []
         self.memory_accesses: list[MemoryAccess] = []
@@ -119,8 +131,6 @@ class Engine:
         self._conditional_move_condition: Optional[ConditionalSite] = None
         self._first_stack_access: Optional[Register] = None
         self._return_values: Optional[set[Any]] = None
-
-        self._init_handlers()
 
     def analyze(self) -> None:
         for current_addr in self.bin_func.code_flow_graph.traverse():
@@ -162,74 +172,15 @@ class Engine:
 
         return self._return_values
 
-    def _handle_binary_op(self, op: pypcode.PcodeOp, op_symbol: str, signed=False):
+    def _handle_binary_op(self, op: pypcode.PcodeOp):
+        op_symbol, signed = self._BINARY_OP_SYMBOLS[op.opcode]
         left = self.handle_get(op.inputs[0])
         right = self.handle_get(op.inputs[1])
-        output = op.output
 
-        if output is None:
+        if op.output is None:
             raise ValueError("Output of binary operation is None")
 
-        self.handle_put(output, BinaryOp.create_binop(left, right, op_symbol, signed))
-
-    def _init_handlers(self):
-        self._handlers.update(
-            {
-                # Binary Arithmetic Operations
-                pypcode.OpCode.INT_ADD: partial(self._handle_binary_op, op_symbol="+"),
-                pypcode.OpCode.INT_MULT: partial(self._handle_binary_op, op_symbol="*"),
-                # Binary Bitshifts Operations
-                pypcode.OpCode.INT_LEFT: partial(self._handle_binary_op, op_symbol="<<"),
-                pypcode.OpCode.INT_RIGHT: partial(self._handle_binary_op, op_symbol=">>"),
-                pypcode.OpCode.INT_AND: partial(self._handle_binary_op, op_symbol="&"),
-                pypcode.OpCode.INT_SUB: partial(self._handle_binary_op, op_symbol="-"),
-                pypcode.OpCode.INT_XOR: partial(self._handle_binary_op, op_symbol="^"),
-                pypcode.OpCode.INT_OR: partial(self._handle_binary_op, op_symbol="|"),
-                # Binary Conditional Operations
-                pypcode.OpCode.INT_EQUAL: partial(self._handle_binary_op, op_symbol="=="),
-                pypcode.OpCode.INT_SLESS: partial(self._handle_binary_op, op_symbol="<", signed=True),
-                pypcode.OpCode.INT_LESS: partial(self._handle_binary_op, op_symbol="<"),
-                pypcode.OpCode.INT_SLESSEQUAL: partial(self._handle_binary_op, op_symbol="<=", signed=True),
-                pypcode.OpCode.INT_NOTEQUAL: partial(self._handle_binary_op, op_symbol="!="),
-                # Variable / Memory Operations
-                pypcode.OpCode.COPY: self._handle_copy,
-                pypcode.OpCode.STORE: self._handle_store,
-                pypcode.OpCode.LOAD: self._handle_load,
-                pypcode.OpCode.IMARK: self._handle_imark,
-                # CodeFlow Operations
-                pypcode.OpCode.CALL: self._handle_call,
-                pypcode.OpCode.CALLIND: self._handle_callind,
-                pypcode.OpCode.CALLOTHER: self._do_nothing,  # TODO: Think if required, example is MIPS `rdhwr` in `sshd` `fileno` Function
-                pypcode.OpCode.CBRANCH: self._handle_cbranch,
-                pypcode.OpCode.BRANCH: self._handle_branch,
-                pypcode.OpCode.BRANCHIND: self._handle_branchind,
-                pypcode.OpCode.RETURN: self._do_nothing,
-                # Unary Operations
-                pypcode.OpCode.INT_2COMP: self._handle_int_2comp,
-                pypcode.OpCode.BOOL_NEGATE: self._handle_bool_negate,
-                pypcode.OpCode.INT_NEGATE: self._handle_int_negate,
-                # Byte Operations
-                pypcode.OpCode.INT_SEXT: self._handle_int_sext,
-                pypcode.OpCode.INT_ZEXT: self._handle_int_zext,
-                pypcode.OpCode.SUBPIECE: self._handle_subpiece,
-            }
-        )
-
-        self._put_handlers.update(
-            {
-                "register": self._handle_put_register,
-                "unique": self._handle_put_unique,
-            }
-        )
-
-        self._get_handlers.update(
-            {
-                "register": self._handle_get_register,
-                "const": self._handle_get_const,
-                "unique": self._handle_get_unique,
-                "ram": self._handle_get_const,
-            }
-        )
+        self.handle_put(op.output, BinaryOp.create_binop(left, right, op_symbol, signed))
 
     def _analyze_block(self, blk: FunctionBlock):
         self.current_blk = blk
@@ -237,7 +188,7 @@ class Engine:
 
         while current_address < blk.end:
             for op in self.bin_func.opcodes[current_address].ops:
-                self._handlers[op.opcode](op)
+                Engine._OPCODE_HANDLERS[op.opcode](self, op)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
     def _get_block_and_state_from_mark(self, mark: int) -> tuple[FunctionBlock, InstructionState]:
@@ -270,7 +221,8 @@ class Engine:
                 loops = [loops[1]]
 
         self.previous_marks = [
-            mark for mark in self.previous_marks
+            mark
+            for mark in self.previous_marks
             if not any(self.bin_func.blocks_dict[mark].start in loop.blocks for loop in loops)
         ]
 
@@ -291,9 +243,7 @@ class Engine:
         state_copy.clear_after_callsite(self.project.arch_regs)
         return blk, state_copy
 
-    def _merge_parent_contexts(
-        self, parent_contexts: list[tuple[FunctionBlock, InstructionState]]
-    ) -> InstructionState:
+    def _merge_parent_contexts(self, parent_contexts: list[tuple[FunctionBlock, InstructionState]]) -> InstructionState:
         current_blk, current_state = parent_contexts[0]
         for next_blk, next_state in parent_contexts[1:]:
             common_ancestor_addr = self.bin_func.common_ancestor(current_blk, next_blk)
@@ -528,7 +478,7 @@ class Engine:
         return self.instructions_state[self.current_inst].unique.get(offset, None)
 
     def handle_get(self, input: pypcode.Varnode | _FakeVarnode) -> Any:
-        return self._get_handlers[input.space.name](input.offset)
+        return Engine._GET_HANDLERS[input.space.name](self, input.offset)
 
     def _handle_put_register(self, offset: int, val: Any):
         if self._conditional_move_condition is None:
@@ -544,7 +494,7 @@ class Engine:
         self.instructions_state[self.current_inst].unique[offset] = val
 
     def handle_put(self, output: pypcode.Varnode | None, val: Any):
-        self._put_handlers[output.space.name](output.offset, val)
+        Engine._PUT_HANDLERS[output.space.name](self, output.offset, val)
 
     def _extract_target(self, target: Any) -> Any:
         if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
@@ -583,4 +533,48 @@ class Engine:
 
         return args
 
+    # Class-level dispatch tables. Methods referenced here must be defined above.
+    _OPCODE_HANDLERS: ClassVar[dict[pypcode.OpCode, Callable]] = {
+        pypcode.OpCode.INT_ADD: _handle_binary_op,
+        pypcode.OpCode.INT_MULT: _handle_binary_op,
+        pypcode.OpCode.INT_LEFT: _handle_binary_op,
+        pypcode.OpCode.INT_RIGHT: _handle_binary_op,
+        pypcode.OpCode.INT_AND: _handle_binary_op,
+        pypcode.OpCode.INT_SUB: _handle_binary_op,
+        pypcode.OpCode.INT_XOR: _handle_binary_op,
+        pypcode.OpCode.INT_OR: _handle_binary_op,
+        pypcode.OpCode.INT_EQUAL: _handle_binary_op,
+        pypcode.OpCode.INT_SLESS: _handle_binary_op,
+        pypcode.OpCode.INT_LESS: _handle_binary_op,
+        pypcode.OpCode.INT_SLESSEQUAL: _handle_binary_op,
+        pypcode.OpCode.INT_NOTEQUAL: _handle_binary_op,
+        pypcode.OpCode.COPY: _handle_copy,
+        pypcode.OpCode.STORE: _handle_store,
+        pypcode.OpCode.LOAD: _handle_load,
+        pypcode.OpCode.IMARK: _handle_imark,
+        pypcode.OpCode.CALL: _handle_call,
+        pypcode.OpCode.CALLIND: _handle_callind,
+        pypcode.OpCode.CALLOTHER: _do_nothing,  # TODO: Think if required, example is MIPS `rdhwr` in `sshd` `fileno` Function
+        pypcode.OpCode.CBRANCH: _handle_cbranch,
+        pypcode.OpCode.BRANCH: _handle_branch,
+        pypcode.OpCode.BRANCHIND: _handle_branchind,
+        pypcode.OpCode.RETURN: _do_nothing,
+        pypcode.OpCode.INT_2COMP: _handle_int_2comp,
+        pypcode.OpCode.BOOL_NEGATE: _handle_bool_negate,
+        pypcode.OpCode.INT_NEGATE: _handle_int_negate,
+        pypcode.OpCode.INT_SEXT: _handle_int_sext,
+        pypcode.OpCode.INT_ZEXT: _handle_int_zext,
+        pypcode.OpCode.SUBPIECE: _handle_subpiece,
+    }
 
+    _PUT_HANDLERS: ClassVar[dict[str, Callable]] = {
+        "register": _handle_put_register,
+        "unique": _handle_put_unique,
+    }
+
+    _GET_HANDLERS: ClassVar[dict[str, Callable]] = {
+        "register": _handle_get_register,
+        "const": _handle_get_const,
+        "unique": _handle_get_unique,
+        "ram": _handle_get_const,
+    }
