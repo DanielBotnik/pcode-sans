@@ -15,8 +15,9 @@ from engine_types import (
     MemoryAccess,
     MemoryAccessType,
     UnaryOp,
+    Value,
 )
-from typing import Any, Callable, ClassVar, Optional
+from typing import Callable, ClassVar, Optional
 from frozendict import frozendict
 from binary_function import BinaryFunction, CBRANCH_SKIP_ADDR, FunctionBlock
 from project import ArchRegisters
@@ -24,10 +25,10 @@ from project import ArchRegisters
 
 class InstructionState:
     def __init__(self):
-        self.regs: dict[int, Any] = {}
-        self.unique: dict[int, Any] = {}
-        self.ram: dict[int, Any] = {}
-        self.stack: dict[int, Any] = {}
+        self.regs: dict[int, Value] = {}
+        self.unique: dict[int, Value] = {}
+        self.ram: dict[int, Value] = {}
+        self.stack: dict[int, Value] = {}
         self.last_callsite: Optional[CallSite] = None
         self.goto_state: dict[int, InstructionState] = dict()
         self.used_arguments: set[int] = set()
@@ -43,15 +44,14 @@ class InstructionState:
         return new_state
 
     @staticmethod
-    def _merge_dicts(condsite: ConditionalSite, iftrue: dict, iffalse: dict) -> dict:
-        merged = {}
+    def _merge_dicts(condsite: ConditionalSite, iftrue: dict[int, Value], iffalse: dict[int, Value]) -> dict[int, Value]:
+        merged: dict[int, Value] = {}
         for k in iftrue.keys() | iffalse.keys():
-            t = iftrue.get(k)
-            f = iffalse.get(k)
             if k in iftrue and k in iffalse:
+                t, f = iftrue[k], iffalse[k]
                 merged[k] = t if t == f else ConditionalExpression(condsite, t, f)
             else:
-                merged[k] = t if k in iftrue else f
+                merged[k] = iftrue[k] if k in iftrue else iffalse[k]
         return merged
 
     def merge(self, other: InstructionState, condsite: ConditionalSite) -> InstructionState:
@@ -130,7 +130,7 @@ class Engine:
         self._unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
         self._conditional_move_condition: Optional[ConditionalSite] = None
         self._first_stack_access: Optional[Register] = None
-        self._return_values: Optional[set[Any]] = None
+        self._return_values: Optional[set[Value]] = None
 
     def analyze(self) -> None:
         for current_addr in self.bin_func.code_flow_graph.traverse():
@@ -148,7 +148,7 @@ class Engine:
         return self.bin_func.loops_dict
 
     @property
-    def return_values(self) -> set[Any]:
+    def return_values(self) -> set[Value]:
         if self._return_values is not None:
             return self._return_values
 
@@ -247,12 +247,13 @@ class Engine:
         current_blk, current_state = parent_contexts[0]
         for next_blk, next_state in parent_contexts[1:]:
             common_ancestor_addr = self.bin_func.common_ancestor(current_blk, next_blk)
-            common_condsite = self.addr_to_codeflow_conditional_site.get(common_ancestor_addr)
-            if common_condsite:
-                if self.bin_func.is_ancestor(current_blk.start, common_condsite.iffalse):
-                    current_state = current_state.merge(next_state, common_condsite)
-                else:
-                    current_state = next_state.merge(current_state, common_condsite)
+            if common_ancestor_addr is not None:
+                common_condsite = self.addr_to_codeflow_conditional_site.get(common_ancestor_addr)
+                if common_condsite:
+                    if self.bin_func.is_ancestor(current_blk.start, common_condsite.iffalse):
+                        current_state = current_state.merge(next_state, common_condsite)
+                    else:
+                        current_state = next_state.merge(current_state, common_condsite)
             current_blk = next_blk
         return current_state
 
@@ -311,7 +312,7 @@ class Engine:
     def _handle_call(self, op: pypcode.PcodeOp):
         self._handle_callind(op)
 
-    def _create_callsite(self, target: Any) -> CallSite:
+    def _create_callsite(self, target: Value) -> CallSite:
         resolved_target = self._extract_target(target)
         args = self._collect_call_arguments()
 
@@ -351,6 +352,7 @@ class Engine:
 
     def _handle_branch(self, op: pypcode.PcodeOp):
         goto_addr = self.handle_get(op.inputs[0])
+        assert isinstance(goto_addr, int)
 
         if goto_addr < self.bin_func.start or goto_addr >= self.bin_func.end:
             self._create_callsite(goto_addr)
@@ -364,10 +366,14 @@ class Engine:
     def _handle_cbranch(self, op: pypcode.PcodeOp):
         goto_iftrue = self.handle_get(op.inputs[0])
         goto_iffalse = self.bin_func._next_address(self.current_inst)
-        condition: BinaryOp | int = self.handle_get(op.inputs[1])
+        condition = self.handle_get(op.inputs[1])
+
+        assert isinstance(goto_iftrue, int)
 
         if isinstance(condition, int):  # Sometimes the result is known at analysis time, for example LL/SC instructions
             return
+
+        assert isinstance(condition, BinaryOp)
 
         if goto_iftrue == CBRANCH_SKIP_ADDR:
             self._conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
@@ -391,17 +397,17 @@ class Engine:
         self._create_callsite(target)
 
     def _handle_bool_negate(self, op: pypcode.PcodeOp):
-        bool_expr: BinaryOp | int = self.handle_get(op.inputs[0])
+        bool_expr = self.handle_get(op.inputs[0])
 
         if isinstance(bool_expr, int):
             self._handle_int_negate(op)
             return
 
+        assert isinstance(bool_expr, BinaryOp)
         self.handle_put(op.output, bool_expr.negate())
 
     def _handle_int_negate(self, op: pypcode.PcodeOp):
-        int_expr: BinaryOp = self.handle_get(op.inputs[0])
-
+        int_expr = self.handle_get(op.inputs[0])
         self.handle_put(op.output, UnaryOp(int_expr, "~"))
 
     def _handle_int_sext(self, op: pypcode.PcodeOp):
@@ -415,7 +421,7 @@ class Engine:
         offset = self.handle_get(op.inputs[1])
         self.handle_put(op.output, self._resolve_ram_load(offset))
 
-    def _resolve_ram_load(self, offset: Any) -> Any:
+    def _resolve_ram_load(self, offset: Value) -> Value:
         if isinstance(offset, (int, UnaryOp)):
             return UnaryOp(offset, "*")
 
@@ -429,12 +435,13 @@ class Engine:
 
         return self._resolve_stack_load(right)
 
-    def _record_load(self, base: Any, offset: Any) -> MemoryAccess:
+    def _record_load(self, base: Value, offset: Value) -> MemoryAccess:
         res = MemoryAccess(self.current_inst, base, offset, MemoryAccessType.LOAD)
         self.memory_accesses.append(res)
         return res
 
-    def _resolve_stack_load(self, right: Any) -> Any:
+    def _resolve_stack_load(self, right: Value) -> Value:
+        assert isinstance(right, int)
         arch = self.project.arch_regs
         state = self.instructions_state[self.current_inst]
         signed_value = ctypes.c_int32(right).value
@@ -444,11 +451,14 @@ class Engine:
 
         res = state.stack.get(signed_value)
         if res is None:
-            res = MemoryAccess(self.current_inst, self._first_stack_access, ctypes.c_uint32(right).value, MemoryAccessType.LOAD)
+            assert self._first_stack_access is not None
+            res = MemoryAccess(
+                self.current_inst, self._first_stack_access, ctypes.c_uint32(right).value, MemoryAccessType.LOAD
+            )
             state.stack[signed_value] = res
         return res
 
-    def _handle_get_register(self, offset: int) -> Any:
+    def _handle_get_register(self, offset: int) -> Value:
         state = self.instructions_state[self.current_inst]
         arch = self.project.arch_regs
 
@@ -467,16 +477,16 @@ class Engine:
         state.regs[offset] = res
         return res
 
-    def _handle_get_const(self, offset: int) -> Any:
+    def _handle_get_const(self, offset: int) -> int:
         return offset
 
-    def _handle_get_unique(self, offset: int) -> Any:
-        return self.instructions_state[self.current_inst].unique.get(offset, None)
+    def _handle_get_unique(self, offset: int) -> Value | None:
+        return self.instructions_state[self.current_inst].unique.get(offset)
 
-    def handle_get(self, input: pypcode.Varnode | _FakeVarnode) -> Any:
+    def handle_get(self, input: pypcode.Varnode | _FakeVarnode) -> Value:
         return Engine._GET_HANDLERS[input.space.name](self, input.offset)
 
-    def _handle_put_register(self, offset: int, val: Any):
+    def _handle_put_register(self, offset: int, val: Value):
         if self._conditional_move_condition is None:
             self.instructions_state[self.current_inst].regs[offset] = val
         else:
@@ -486,13 +496,15 @@ class Engine:
                 val,
             )
 
-    def _handle_put_unique(self, offset: int, val: Any):
+    def _handle_put_unique(self, offset: int, val: Value):
         self.instructions_state[self.current_inst].unique[offset] = val
 
-    def handle_put(self, output: pypcode.Varnode | None, val: Any):
+    def handle_put(self, output: pypcode.Varnode | None, val: Value):
+        if output is None:
+            return
         Engine._PUT_HANDLERS[output.space.name](self, output.offset, val)
 
-    def _extract_target(self, target: Any) -> Any:
+    def _extract_target(self, target: Value) -> Value:
         if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
             target = target.right
 
@@ -502,7 +514,7 @@ class Engine:
         self.callsites.append(callsite)
         self.instructions_state[self.current_inst].last_callsite = callsite
 
-    def _collect_call_arguments(self) -> dict[int, Any]:
+    def _collect_call_arguments(self) -> dict[int, Value]:
         state = self.instructions_state[self.current_inst]
         arch = self.project.arch_regs
 
@@ -513,6 +525,7 @@ class Engine:
             if not isinstance(current_stack, BinaryOp):
                 raise ValueError("Current stack pointer is expected to be a BinaryOp")
 
+            assert isinstance(current_stack.right, int)
             stack_argument_offset = ctypes.c_int32(current_stack.right + arch.stack_argument_offset).value
             arg_num = len(arch.arguments)
 

@@ -1,14 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Mapping, TypeAlias
+from typing import Mapping, TypeAlias
 import operator
 
 from project import Project
 
 
 
-def repr_or_hexint(val: Any) -> str:
+def repr_or_hexint(val: Value) -> str:
     if isinstance(val, int):
         return hex(val)
 
@@ -35,7 +35,7 @@ class Arg:
 
 @dataclass(frozen=True)
 class UnaryOp:
-    obj: Any
+    obj: Value
     op: str
 
     def __repr__(self):
@@ -44,8 +44,8 @@ class UnaryOp:
 
 @dataclass(frozen=True)
 class BinaryOp:
-    left: Any
-    right: Any
+    left: Value
+    right: Value
     op: str
     signed: bool = False
 
@@ -84,7 +84,7 @@ class BinaryOp:
     _MONOID = {"+": 0, "*": 1, "|": 0, "^": 0, "-": 0}
 
     @staticmethod
-    def create_binop(left: Any, right: Any, op: str, signed: bool = False) -> BinaryOp | int:
+    def create_binop(left: Value, right: Value, op: str, signed: bool = False) -> Value:
         if isinstance(left, int) and isinstance(right, int):
             return BinaryOp._eval_numeric_expression(left, right, op)
 
@@ -135,8 +135,8 @@ class ConditionalSite:
 @dataclass(frozen=True)
 class CallSite:
     addr: int
-    target: int
-    args: Mapping[int, Any]
+    target: Value
+    args: Mapping[int, Value]
 
     def __repr__(self):
         return f"({repr_or_hexint(self.target)})({', '.join(repr(self.args[arg_idx]) for arg_idx in sorted(self.args.keys()))})"
@@ -145,13 +145,13 @@ class CallSite:
 @dataclass(frozen=True)
 class ConditionalExpression:
     condsite: ConditionalSite
-    iftrue: Any
-    iffalse: Any
+    iftrue: Value
+    iffalse: Value
 
     def __repr__(self):
         return f"({repr_or_hexint(self.iftrue)} if({self.condsite.condition!r} at {hex(self.condsite.addr)}) else {repr_or_hexint(self.iffalse)})"
 
-    def collect_values(self) -> list[Any]:
+    def collect_values(self) -> list[Value]:
         values = []
         if isinstance(self.iftrue, ConditionalExpression):
             values.extend(self.iftrue.collect_values())
@@ -174,10 +174,10 @@ class MemoryAccessType(IntEnum):
 @dataclass(frozen=True)
 class MemoryAccess:
     addr: int
-    base: Any
-    offset: Any
+    base: Value
+    offset: Value
     access_type: MemoryAccessType
-    stored_value: Any | None = None
+    stored_value: Value | None = None
 
     def __repr__(self):
         addition_str = "" if self.offset == 0 else f" + {repr_or_hexint(self.offset)}"
@@ -210,3 +210,5 @@ class Loop:
 
 
 LoopsDict: TypeAlias = Mapping[int, list[Loop]]
+
+Value: TypeAlias = int | Register | Arg | BinaryOp | UnaryOp | CallSite | MemoryAccess | ConditionalExpression
