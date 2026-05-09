@@ -149,7 +149,6 @@ class TestEngineMIPSBE:
         engine = Engine(BinaryFunction(ADDR, CODE, project))
 
         assert len(engine.conditional_sites) == 2
-        import ipdb
 
         assert (
             ConditionalSite(0x422C70, BinaryOp(Arg(0), 0, "<", signed=True), 0x422CAC, 0x422C78)
