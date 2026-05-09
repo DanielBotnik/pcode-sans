@@ -44,6 +44,24 @@ class InstructionState:
         return new_state
 
 
+class _FakeAddrSpace:
+    def __init__(self, name: str):
+        self.name = name
+
+
+class _FakeVarnode:
+    def __init__(self, space: _FakeAddrSpace, offset: int, size: int):
+        self.space = space
+        self.offset = offset
+        self.size = size
+
+
+@dataclass
+class _UnfinishedConditionalSite:
+    condition: BinaryOp
+    goto_iftrue: int
+
+
 class Engine:
 
     def __init__(self, start: int, code: bytes, project: Project):
@@ -543,7 +561,7 @@ class Engine:
     def _handle_get_unique(self, offset: int) -> Any:
         return self.instructions_state[self.current_inst].unique.get(offset, None)
 
-    def handle_get(self, input: pypcode.Varnode | FakeVarnode) -> Any:
+    def handle_get(self, input: pypcode.Varnode | _FakeVarnode) -> Any:
         return self.__get_handlers[input.space.name](input.offset)
 
     def _handle_put_register(self, offset: int, val: Any):
@@ -595,24 +613,8 @@ class Engine:
 
         for arg_num, _ in arch.arguments.items():
             if arg_num not in args and arg_num < max_reg_arg:
-                args[arg_num] = self.handle_get(FakeVarnode(FakeAddrSpace("register"), arch.arguments[arg_num], 4))
+                args[arg_num] = self.handle_get(_FakeVarnode(_FakeAddrSpace("register"), arch.arguments[arg_num], 4))
 
         return args
 
 
-class FakeAddrSpace:
-    def __init__(self, name: str):
-        self.name = name
-
-
-class FakeVarnode:
-    def __init__(self, space: FakeAddrSpace, offset: int, size: int):
-        self.space = space
-        self.offset = offset
-        self.size = size
-
-
-@dataclass
-class _UnfinishedConditionalSite:
-    condition: BinaryOp
-    goto_iftrue: int
