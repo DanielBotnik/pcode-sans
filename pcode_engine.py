@@ -84,6 +84,7 @@ class Engine:
 
         self._init_handlers()
 
+    def analyze(self) -> None:
         for current_addr in self.bin_func.code_flow_graph.traverse():
             blk = self.bin_func.blocks_dict_start_address[current_addr]
             parents = self.bin_func.code_flow_graph.get_parents(current_addr)

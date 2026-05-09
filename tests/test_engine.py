@@ -23,6 +23,7 @@ class TestEngineMIPSEL:
 
         project = Project("MIPS:LE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         expected_conditional_sites = {
             ConditionalSite(0x9D8, BinaryOp(UnaryOp(0xEE0, "*"), 0, "!="), 0xA6C, 0x9E0),
@@ -58,6 +59,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         expected_result = ConditionalExpression(
             engine.addr_to_codeflow_conditional_site[0x00403EAC],
@@ -74,6 +76,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.callsites[1].args == frozendict({0: Arg(0), 1: Arg(1), 2: Arg(2), 3: Arg(3)})
 
@@ -84,6 +87,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert MemoryAccess(0x005601C4, Arg(0), 0x38, MemoryAccessType.LOAD) in engine.memory_accesses
         assert MemoryAccess(0x005601D4, Arg(0), 0x44, MemoryAccessType.LOAD) in engine.memory_accesses
@@ -99,6 +103,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert MemoryAccess(0x004A3D10, Arg(0), 0x14, MemoryAccessType.LOAD) in engine.memory_accesses
         assert MemoryAccess(0x004A3D4C, Arg(0), 0x10, MemoryAccessType.LOAD) in engine.memory_accesses
@@ -132,6 +137,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.conditional_sites[0] == ConditionalSite(0x422DA8, BinaryOp(Arg(0), 9, ">="), 2, 0x422DAC)
 
@@ -147,6 +153,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.conditional_sites) == 2
 
@@ -167,6 +174,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         expected_inner_callsite = CallSite(
             0x00427978,
@@ -204,6 +212,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.return_values == {0x005DC774}
 
@@ -214,6 +223,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.return_values == {1}
 
@@ -224,6 +234,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.return_values == {CallSite(0x0048EFA8, 0x0048EE54, frozendict())}
 
@@ -234,6 +245,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.return_values == {BinaryOp(get_callsite_by_addr(engine, 0x0048CBB0), 13, "*")}
 
@@ -244,6 +256,7 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.return_values == {0, 0xFFFFFFFF, get_callsite_by_addr(engine, 0x0048AC80)}
 
@@ -254,5 +267,6 @@ class TestEngineMIPSBE:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.return_values == {MemoryAccess(0x00489628, Arg(0), 0x14, MemoryAccessType.LOAD)}

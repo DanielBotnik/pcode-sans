@@ -13,6 +13,7 @@ class TestCallSites:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.callsites) == 1
         assert engine.callsites[0] == CallSite(
@@ -28,6 +29,7 @@ class TestCallSites:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.callsites) == 1
         assert engine.callsites[0] == CallSite(
@@ -44,6 +46,7 @@ class TestCallSites:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.callsites) == 1
         expected_callsite = CallSite(
@@ -59,6 +62,7 @@ class TestCallSites:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.callsites) == 1
         expected_callsite = CallSite(
@@ -86,6 +90,7 @@ class TestCallSites:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert engine.callsites[1].args == frozendict(
             {

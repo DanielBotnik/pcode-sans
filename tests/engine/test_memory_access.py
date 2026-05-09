@@ -13,6 +13,7 @@ class TestMemoryAccess:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.memory_accesses) == 1
         expected_access = MemoryAccess(
@@ -35,6 +36,7 @@ class TestMemoryAccess:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.memory_accesses) == 1
         expected_access = MemoryAccess(
@@ -52,6 +54,7 @@ class TestMemoryAccess:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.memory_accesses) == 5
 
@@ -69,6 +72,7 @@ class TestMemoryAccess:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.memory_accesses) == 2
         base_access = MemoryAccess(0x00445BDC, Arg(0), 0, MemoryAccessType.LOAD)
@@ -82,6 +86,7 @@ class TestMemoryAccess:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.memory_accesses) == 1
         assert engine.memory_accesses[0] == MemoryAccess(
@@ -100,6 +105,7 @@ class TestMemoryAccess:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.memory_accesses) == 2
         assert MemoryAccess(0x0044F024, Arg(0), 0x10, MemoryAccessType.STORE, Arg(1)) in engine.memory_accesses

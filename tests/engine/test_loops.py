@@ -14,6 +14,7 @@ class TestLoops:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         base = Register(8, 0x43F934, project)
         expected_loop = Loop(
@@ -33,6 +34,7 @@ class TestLoops:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.loops_dict_start_address) == 1
 
@@ -64,6 +66,7 @@ class TestLoops:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.loops_dict_start_address) == 2
 
@@ -126,6 +129,7 @@ class TestLoops:
 
         project = Project("MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine.analyze()
 
         assert len(engine.loops_dict_start_address) == 4
 
