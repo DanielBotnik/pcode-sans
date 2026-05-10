@@ -98,10 +98,20 @@ class BinaryOp:
                     return left.negate()
             elif left.op == "^" and right == 1 and op == "<" and not signed:
                 return BinaryOp(left.left, left.right, "==")
+            elif right == BinaryOp._MONOID.get(op, None):
+                return left
+            elif left.op in {"+", "-"} and op in {"+", "-"} and isinstance(left.right, int):
+                # Fold (x +/- c1) +/- c2 → BinaryOp(x, combined, "+")
+                c1 = left.right if left.op == "+" else -left.right
+                c2 = right if op == "+" else -right
+                combined = (c1 + c2) & 0xFFFFFFFF
+                if combined == 0:
+                    return left.left
+                return BinaryOp(left.left, combined, "+")
 
         elif right == BinaryOp._MONOID.get(op, None):
             return left
-        elif left == BinaryOp._MONOID.get(op, None):
+        elif op != "-" and left == BinaryOp._MONOID.get(op, None):
             return right
 
         return BinaryOp(left, right, op, signed)

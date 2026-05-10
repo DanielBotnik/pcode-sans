@@ -113,7 +113,10 @@ class Engine:
         pypcode.OpCode.INT_SLESS: ("<", True),
         pypcode.OpCode.INT_LESS: ("<", False),
         pypcode.OpCode.INT_SLESSEQUAL: ("<=", True),
+        pypcode.OpCode.INT_LESSEQUAL: ("<=", False),
         pypcode.OpCode.INT_NOTEQUAL: ("!=", False),
+        pypcode.OpCode.BOOL_AND: ("&", False),
+        pypcode.OpCode.BOOL_OR: ("|", False),
     }
 
     def __init__(self, bin_func: BinaryFunction):
@@ -286,23 +289,17 @@ class Engine:
             self.instructions_state[self.current_inst].ram[offset] = val
             return
 
-        if isinstance(offset, (CallSite, Arg)):
+        if not isinstance(offset, BinaryOp):
             self.memory_accesses.append(MemoryAccess(self.current_inst, offset, 0, MemoryAccessType.STORE, val))
             return
 
-        if not isinstance(offset, BinaryOp):
-            raise NotImplementedError(f"STORE with offset of type '{type(offset)}' is not implemented yet.")
-
-        right = offset.right
-        left = offset.left
-
-        if not isinstance(left, Register) or left.offset != self.project.arch_regs.stackpointer:
-            self.memory_accesses.append(MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val))
-            return
-
-        if isinstance(right, int) and offset.op == "+":
+        left, right = offset.left, offset.right
+        if offset.op == "+" and isinstance(left, Register) and left.offset == self.project.arch_regs.stackpointer:
             signed_offset = ctypes.c_int32(right).value
             self.instructions_state[self.current_inst].stack[signed_offset] = val
+            return
+
+        self.memory_accesses.append(MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val))
 
     def _handle_int_2comp(self, op: pypcode.PcodeOp):
         val = self.handle_get(op.inputs[0])
@@ -429,10 +426,8 @@ class Engine:
             return self._record_load(offset, 0)
 
         left, right = offset.left, offset.right
-
         if not isinstance(left, Register) or left.offset != self.project.arch_regs.stackpointer:
             return self._record_load(left, right)
-
         return self._resolve_stack_load(right)
 
     def _record_load(self, base: Value, offset: Value) -> MemoryAccess:
@@ -556,6 +551,7 @@ class Engine:
         pypcode.OpCode.INT_SLESS: _handle_binary_op,
         pypcode.OpCode.INT_LESS: _handle_binary_op,
         pypcode.OpCode.INT_SLESSEQUAL: _handle_binary_op,
+        pypcode.OpCode.INT_LESSEQUAL: _handle_binary_op,
         pypcode.OpCode.INT_NOTEQUAL: _handle_binary_op,
         pypcode.OpCode.COPY: _handle_copy,
         pypcode.OpCode.STORE: _handle_store,
@@ -564,6 +560,11 @@ class Engine:
         pypcode.OpCode.CALL: _handle_call,
         pypcode.OpCode.CALLIND: _handle_callind,
         pypcode.OpCode.CALLOTHER: _do_nothing,  # TODO: Think if required, example is MIPS `rdhwr` in `sshd` `fileno` Function
+        pypcode.OpCode.INT_CARRY: _do_nothing,
+        pypcode.OpCode.INT_SCARRY: _do_nothing,
+        pypcode.OpCode.INT_SBORROW: _do_nothing,
+        pypcode.OpCode.BOOL_AND: _handle_binary_op,
+        pypcode.OpCode.BOOL_OR: _handle_binary_op,
         pypcode.OpCode.CBRANCH: _handle_cbranch,
         pypcode.OpCode.BRANCH: _handle_branch,
         pypcode.OpCode.BRANCHIND: _handle_branchind,
