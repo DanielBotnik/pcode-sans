@@ -87,32 +87,24 @@ class BinaryOp:
     def create_binop(left: Value, right: Value, op: str, signed: bool = False) -> Value:
         if isinstance(left, int) and isinstance(right, int):
             return BinaryOp._eval_numeric_expression(left, right, op)
-
-        elif isinstance(left, BinaryOp) and isinstance(right, int):
-            if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
-                return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
-            elif left.op in BinaryOp._COMPARISON_OPS and right == 0:
-                if op == "!=":
-                    return left
-                elif op == "==":
-                    return left.negate()
-            elif left.op == "^" and right == 1 and op == "<" and not signed:
-                return BinaryOp(left.left, left.right, "==")
-            elif right == BinaryOp._MONOID.get(op, None):
-                return left
-            elif left.op in {"+", "-"} and op in {"+", "-"} and isinstance(left.right, int):
-                # Fold (x +/- c1) +/- c2 → BinaryOp(x, combined, "+")
-                c1 = left.right if left.op == "+" else -left.right
-                c2 = right if op == "+" else -right
-                combined = (c1 + c2) & 0xFFFFFFFF
-                if combined == 0:
-                    return left.left
-                return BinaryOp(left.left, combined, "+")
-
-        elif right == BinaryOp._MONOID.get(op, None):
+        if right == BinaryOp._MONOID.get(op):
             return left
-        elif op != "-" and left == BinaryOp._MONOID.get(op, None):
+        if op != "-" and left == BinaryOp._MONOID.get(op):
             return right
+        if not (isinstance(left, BinaryOp) and isinstance(right, int)):
+            return BinaryOp(left, right, op, signed)
+
+        if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
+            return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
+        if left.op in {"+", "-"} and op in {"+", "-"} and isinstance(left.right, int):
+            c1 = left.right if left.op == "+" else -left.right
+            c2 = right if op == "+" else -right
+            combined = (c1 + c2) & 0xFFFFFFFF
+            return left.left if combined == 0 else BinaryOp(left.left, combined, "+")
+        if left.op in BinaryOp._COMPARISON_OPS and right == 0 and op in {"==", "!="}:
+            return left.negate() if op == "==" else left
+        if left.op == "^" and right == 1 and op == "<" and not signed:
+            return BinaryOp(left.left, left.right, "==")
 
         return BinaryOp(left, right, op, signed)
 
