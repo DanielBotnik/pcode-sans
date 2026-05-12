@@ -44,7 +44,9 @@ class InstructionState:
         return new_state
 
     @staticmethod
-    def _merge_dicts(condsite: ConditionalSite, iftrue: dict[int, Value], iffalse: dict[int, Value]) -> dict[int, Value]:
+    def _merge_dicts(
+        condsite: ConditionalSite, iftrue: dict[int, Value], iffalse: dict[int, Value]
+    ) -> dict[int, Value]:
         merged: dict[int, Value] = {}
         for k in iftrue.keys() | iffalse.keys():
             if k in iftrue and k in iffalse:
@@ -294,12 +296,24 @@ class Engine:
             return
 
         left, right = offset.left, offset.right
-        if offset.op == "+" and isinstance(left, Register) and left.offset == self.project.arch_regs.stackpointer:
-            signed_offset = ctypes.c_int32(right).value
-            self.instructions_state[self.current_inst].stack[signed_offset] = val
+        sp_offset = self._extract_stack_offset(offset)
+        if sp_offset is not None:
+            self.instructions_state[self.current_inst].stack[sp_offset] = val
             return
 
         self.memory_accesses.append(MemoryAccess(self.current_inst, left, right, MemoryAccessType.STORE, val))
+
+    def _extract_stack_offset(self, offset: Value) -> int | None:
+        """Return signed sp-relative offset for a `sp +/- int` BinaryOp, else None."""
+        if not isinstance(offset, BinaryOp) or not isinstance(offset.right, int):
+            return None
+        if not isinstance(offset.left, Register) or offset.left.offset != self.project.arch_regs.stackpointer:
+            return None
+        if offset.op == "+":
+            return ctypes.c_int32(offset.right).value
+        if offset.op == "-":
+            return -ctypes.c_int32(offset.right).value
+        return None
 
     def _handle_int_2comp(self, op: pypcode.PcodeOp):
         val = self.handle_get(op.inputs[0])
@@ -331,6 +345,13 @@ class Engine:
         # Assuming X = SUBPIECE(X, N) for now
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
+    def _is_in_loop(self, addr: int, loop) -> bool:
+        # `loop.blocks` holds block START addresses, but a branch target can land
+        # anywhere inside a block (e.g., the next ARM instruction in conditional
+        # execution patterns). Map the address back to its containing block first.
+        blk = self.bin_func.blocks_dict.get(addr)
+        return blk is not None and blk.start in loop.blocks
+
     def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> ConditionalSite:
         condsite = ConditionalSite(self.current_inst, condition, goto_iftrue, goto_iffalse)
         self.conditional_sites.append(condsite)
@@ -340,9 +361,9 @@ class Engine:
         loops = self.loops_dict.get(self.current_inst, None)
         if loops is not None and isinstance(condition, BinaryOp):
             for loop in loops:
-                if goto_iftrue not in loop.blocks:
+                if not self._is_in_loop(goto_iftrue, loop):
                     loop.exit_conditions[self.current_inst] = condition
-                elif goto_iffalse not in loop.blocks:
+                elif not self._is_in_loop(goto_iffalse, loop):
                     loop.exit_conditions[self.current_inst] = condition.negate()
 
         return condsite
@@ -432,10 +453,10 @@ class Engine:
         if not isinstance(offset, BinaryOp):
             return self._record_load(offset, 0)
 
-        left, right = offset.left, offset.right
-        if not isinstance(left, Register) or left.offset != self.project.arch_regs.stackpointer:
-            return self._record_load(left, right)
-        return self._resolve_stack_load(right)
+        sp_offset = self._extract_stack_offset(offset)
+        if sp_offset is not None:
+            return self._resolve_stack_load(ctypes.c_uint32(sp_offset).value)
+        return self._record_load(offset.left, offset.right)
 
     def _record_load(self, base: Value, offset: Value) -> MemoryAccess:
         res = MemoryAccess(self.current_inst, base, offset, MemoryAccessType.LOAD)
@@ -533,7 +554,13 @@ class Engine:
             arg_num = len(arch.arguments)
 
             while stack_argument_offset in state.stack:
-                args[arg_num] = state.stack[stack_argument_offset]
+                val = state.stack[stack_argument_offset]
+                # Skip callee-save spills: a stack slot still holding the entry-time
+                # value of a register (the only Registers stamped at bin_func.start) is
+                # not a stack-passed argument but a PUSH'd save from the prologue.
+                if isinstance(val, Register) and val.address == self.bin_func.start:
+                    break
+                args[arg_num] = val
                 stack_argument_offset += arch.pointer_size
                 arg_num += 1
 

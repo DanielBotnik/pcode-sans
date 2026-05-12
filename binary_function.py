@@ -272,5 +272,3 @@ class FunctionBlock:
                 self._last_instruction_addr = addr
                 return addr
             addr = next_addr
-
-

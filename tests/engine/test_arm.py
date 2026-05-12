@@ -7,8 +7,10 @@ from engine_types import (
     CallSite,
     ConditionalExpression,
     ConditionalSite,
+    Loop,
     MemoryAccess,
     MemoryAccessType,
+    Register,
     UnaryOp,
 )
 from pcode_engine import Engine
@@ -202,3 +204,187 @@ class TestARMConditionalReturn:
         # at the end of the block.
         assert 0 in engine.return_values
         assert rhs in engine.return_values
+
+
+class TestARMMultipleLoads:
+    # ltrace binary `dlvsym_doit`:
+    #   _dl_vsym(a0[0], a0[1], a0[2], a0[3]);
+    #   a0[4] = result;
+    # Uses LDR + LDM to fetch 4 args, BL, then STR for the result.
+    CODE = b"\x10\x40\x2d\xe9\x00\x40\xa0\xe1\x04\x10\x94\xe5\x00\x00\x90\xe5\x08\x20\x84\xe2\x0c\x00\x92\xe8\xe3\x14\x00\xeb\x10\x00\x84\xe5\x10\x40\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0xAE0C4
+    DL_VSYM = 0xB3470
+
+    def test_callsite_args_from_arg0_struct(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.callsites) == 1
+        cs = engine.callsites[0]
+        assert cs.target == self.DL_VSYM
+        assert cs.args[0] == MemoryAccess(0xAE0D0, Arg(0), 0, MemoryAccessType.LOAD)
+        assert cs.args[1] == MemoryAccess(0xAE0CC, Arg(0), 0x4, MemoryAccessType.LOAD)
+        assert cs.args[2] == MemoryAccess(0xAE0D8, Arg(0), 0x8, MemoryAccessType.LOAD)
+        assert cs.args[3] == MemoryAccess(0xAE0D8, Arg(0), 0xC, MemoryAccessType.LOAD)
+
+    def test_no_spurious_callee_save_args(self):
+        # PUSH {R4, LR} stores callee-saves at sp+0 and sp+4. Those must NOT leak
+        # into the callsite's args dict.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        cs = engine.callsites[0]
+        assert set(cs.args.keys()) == {0, 1, 2, 3}
+
+    def test_stores_return_value_to_struct(self):
+        # STR R0, [R4, #0x10] stores the call's return value at a0[4]
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        store = next(
+            ma for ma in engine.memory_accesses
+            if ma.access_type == MemoryAccessType.STORE
+        )
+        assert store.addr == 0xAE0E0
+        assert store.base == Arg(0)
+        assert store.offset == 0x10
+        assert isinstance(store.stored_value, CallSite)
+        assert store.stored_value.target == self.DL_VSYM
+
+
+class TestARMConditionalCallChain:
+    # ltrace binary `local_strdup`:
+    #   v2 = strlen(a0) + 1;
+    #   v3 = malloc(v2);
+    #   if (v3) return memcpy(v3, a0, v2); else return 0;
+    # Uses BLNE (conditional call) and MOVEQ/MOVNE.
+    CODE = b"\x70\x40\x2d\xe9\x00\x50\xa0\xe1\x5d\x11\xff\xeb\x01\x40\x80\xe2\x04\x00\xa0\xe1\xeb\x09\xff\xeb\x00\x30\x50\xe2\x03\x00\xa0\x01\x05\x10\xa0\x11\x04\x20\xa0\x11\x5d\x17\xff\x1b\x70\x40\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x9D39C
+    STRLEN = 0x61920
+    MALLOC = 0x5FB64
+    MEMCPY = 0x63140
+
+    def test_three_callsites_in_order(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.callsites) == 3
+        assert engine.callsites[0].target == self.STRLEN
+        assert engine.callsites[1].target == self.MALLOC
+        assert engine.callsites[2].target == self.MEMCPY
+
+    def test_strlen_called_with_arg0(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert engine.callsites[0].args[0] == Arg(0)
+
+    def test_malloc_argument_is_strlen_plus_one(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        strlen_call = engine.callsites[0]
+        assert engine.callsites[1].args[0] == BinaryOp(strlen_call, 1, "+")
+
+    def test_blne_creates_conditional_execution_chain(self):
+        # 4 ARM conditional instructions: MOVEQ R0, R3; MOVNE R1, R5; MOVNE R2, R4; BLNE memcpy
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.conditional_sites) == 4
+
+
+class TestARMStackSpill:
+    # ltrace binary `memstream_destroy`:
+    #   return free(a0[1]);
+    # Prologue spills R0 to a stack local, body reloads it — exercises STR+LDR via R11.
+    CODE = b"\x00\x48\x2d\xe9\x04\xb0\x8d\xe2\x08\xd0\x4d\xe2\x08\x00\x0b\xe5\x08\x30\x1b\xe5\x04\x30\x93\xe5\x03\x00\xa0\xe1\x2d\xb4\x00\xeb\x04\xd0\x4b\xe2\x00\x48\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x32938
+    FREE = 0x5FA10
+
+    def test_only_one_memory_access(self):
+        # Despite PUSH/STR/LDR/POP, the only "real" memory access is the *(a0+4) deref.
+        # Everything else is on the stack and should be tracked there, not in memory_accesses.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.memory_accesses) == 1
+        assert engine.memory_accesses[0] == MemoryAccess(0x3294C, Arg(0), 0x4, MemoryAccessType.LOAD)
+
+    def test_free_called_with_loaded_pointer(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.callsites) == 1
+        cs = engine.callsites[0]
+        assert cs.target == self.FREE
+        # arg0 of free is the deref of the spilled-and-reloaded original a0
+        assert cs.args[0] == MemoryAccess(0x3294C, Arg(0), 0x4, MemoryAccessType.LOAD)
+
+    def test_stack_spill_value_at_var_8(self):
+        # STR R0, [R11, #-4] spills arg0 to a stack slot. Verify the engine tracks this
+        # in instructions_state, not as a memory access.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        # The STR is at 0x32944; the value Arg(0) should be stored somewhere on the stack.
+        state = engine.instructions_state[0x32944]
+        assert Arg(0) in state.stack.values()
+
+
+class TestARMLoopWithByteLoad:
+    # ltrace binary `__hash_string`:
+    #   v1 = 0;
+    #   while ((c = ((unsigned char *)a0)[v1])) {
+    #       v2 = c + 16 * v2;
+    #       if (v2 & 0xF0000000) v2 ^= v2 & 0xF0000000 ^ ((v2 & 0xF0000000) >> 24);
+    #       ++v1;
+    #   }
+    #   return v2;
+    # Has a real loop with byte loads (LDRB) and ARM conditional execution (EORNE).
+    CODE = b"\x00\x30\xa0\xe3\x03\x20\xa0\xe1\x04\x00\x00\xea\x02\x22\x81\xe0\x0f\x12\x12\xe2\x02\x20\x21\x10\x21\x2c\x22\x10\x01\x30\x83\xe2\x03\x10\xd0\xe7\x00\x00\x51\xe3\xf7\xff\xff\x1a\x02\x00\xa0\xe1\x1e\xff\x2f\xe1"
+    ADDR = 0x455C4
+
+    def test_loop_detected(self):
+        project = Project("ARM:LE:32:v7")
+        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        assert len(bf.loops_dict_start_address) == 1
+        assert 0x455E4 in bf.loops_dict_start_address
+
+    def test_loop_has_only_real_exit_condition(self):
+        # The body has two EORNE (ARM conditional execution); those must NOT show up
+        # as loop exit conditions. Only the BNE at the loop tail (0x455ec) is a real exit.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        loop = engine.loops_dict_start_address[0x455E4][0]
+        assert set(loop.exit_conditions.keys()) == {0x455EC}
+
+    def test_byte_load_uses_loop_counter(self):
+        # The loop loads bytes from (arg0 + R3) where R3 is the loop induction variable.
+        # The Register stamp should be at the loop header (0x455e4), where the engine
+        # first reads R3 after clearing it for loop analysis.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        loop_counter = Register(0x2C, 0x455E4, project)  # R3 offset = 0x2c
+        assert MemoryAccess(0x455E4, Arg(0), loop_counter, MemoryAccessType.LOAD) in engine.memory_accesses
+
+    def test_conditional_execution_in_loop_body(self):
+        # 2 EORNE instructions create 2 conditional sites inside the loop body.
+        # Plus the BNE at the loop tail = 3 total.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert len(engine.conditional_sites) == 3
