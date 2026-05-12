@@ -393,8 +393,9 @@ class Engine:
             return
 
         # Conditions are typically comparison BinaryOps, but composite booleans
-        # (BOOL_AND/BOOL_OR/!()) can also drive CBRANCH on ARM.
-        assert isinstance(condition, (BinaryOp, UnaryOp))
+        # (BOOL_AND/BOOL_OR/!()) and merged-state ConditionalExpressions can also
+        # drive CBRANCH on ARM. (Anything non-int reachable here.)
+        assert not isinstance(condition, int)
 
         if goto_iftrue == CBRANCH_SKIP_ADDR:
             self._conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
