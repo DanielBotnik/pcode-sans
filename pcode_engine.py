@@ -554,11 +554,14 @@ class Engine:
         args = {arg_num: state.regs[reg] for arg_num, reg in arch.arguments.items() if reg in state.regs}
 
         current_stack = state.regs.get(arch.stackpointer, None)
-        if current_stack is not None and (len(args) == len(arch.arguments) or len(args) == 0):
-            if not isinstance(current_stack, BinaryOp):
-                raise ValueError("Current stack pointer is expected to be a BinaryOp")
-
-            assert isinstance(current_stack.right, int)
+        if (
+            isinstance(current_stack, BinaryOp)
+            and isinstance(current_stack.right, int)
+            and (len(args) == len(arch.arguments) or len(args) == 0)
+        ):
+            # If SP folded back to the entry-time Register (no offset), there are no
+            # stack args. Only the BinaryOp(sp_reg, signed_offset, "+") form indicates
+            # a frame where outgoing stack args may live.
             stack_argument_offset = ctypes.c_int32(current_stack.right + arch.stack_argument_offset).value
             arg_num = len(arch.arguments)
 

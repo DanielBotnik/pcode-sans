@@ -101,6 +101,25 @@ class TestArithmeticBinaryOp:
             BinaryOp(Arg(0), 5, "-"), 0, "=="
         )
 
+    def test_xor_compared_with_zero_simplifies(self):
+        # (a ^ b) == 0 → a == b (XOR is zero exactly when operands are equal).
+        # Same structural rule as the subtraction case.
+        assert BinaryOp(Arg(0), Arg(1), "==") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), Arg(1), "^"), 0, "=="
+        )
+        assert BinaryOp(Arg(0), Arg(1), "!=") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), Arg(1), "^"), 0, "!="
+        )
+
+    def test_less_than_one_unsigned_is_equal_zero(self):
+        # x <u 1 ≡ x == 0 for any unsigned 32-bit value.
+        assert BinaryOp(Arg(0), 0, "==") == BinaryOp.create_binop(Arg(0), 1, "<", signed=False)
+        # Composes with the (a ^ b) == 0 → a == b rule:
+        #   (a ^ b) <u 1 → (a ^ b) == 0 → a == b
+        assert BinaryOp(Arg(0), Arg(1), "==") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), Arg(1), "^"), 1, "<", signed=False
+        )
+
     def test_arithmetic_operations_of_integers(self):
         assert 9 == BinaryOp.create_binop(5, 4, "+")
         assert 1 == BinaryOp.create_binop(5, 4, "-")

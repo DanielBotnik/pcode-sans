@@ -91,22 +91,25 @@ class BinaryOp:
             return left
         if op != "-" and left == BinaryOp._MONOID.get(op):
             return right
+        # x <u 1 ≡ x == 0 — rewrite so the equality-zero rules below apply uniformly.
+        if right == 1 and op == "<" and not signed:
+            return BinaryOp.create_binop(left, 0, "==")
         if not (isinstance(left, BinaryOp) and isinstance(right, int)):
             return BinaryOp(left, right, op, signed)
 
-        if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
-            return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
-        if left.op in {"+", "-"} and op in {"+", "-"} and isinstance(left.right, int):
+        # Treat - as + with the additive inverse: (x ± c1) ± c2 collapses to one + with a 32-bit combined offset.
+        if op in {"+", "-"} and left.op in {"+", "-"} and isinstance(left.right, int):
             c1 = left.right if left.op == "+" else -left.right
             c2 = right if op == "+" else -right
             combined = (c1 + c2) & 0xFFFFFFFF
             return left.left if combined == 0 else BinaryOp(left.left, combined, "+")
+        if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
+            return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
         if left.op in BinaryOp._COMPARISON_OPS and right == 0 and op in {"==", "!="}:
             return left.negate() if op == "==" else left
-        if left.op == "-" and right == 0 and op in {"==", "!="}:
+        # Both - and ^ are zero exactly when their operands are equal — lift to comparison.
+        if left.op in {"-", "^"} and right == 0 and op in {"==", "!="}:
             return BinaryOp(left.left, left.right, op)
-        if left.op == "^" and right == 1 and op == "<" and not signed:
-            return BinaryOp(left.left, left.right, "==")
 
         return BinaryOp(left, right, op, signed)
 
