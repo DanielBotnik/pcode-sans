@@ -377,6 +377,13 @@ class Engine:
             return
 
         if goto_iffalse == goto_iftrue:
+            # When the IMARK covers a single ARM instruction this is ARM conditional execution
+            # (MOVNE, ADDEQ, ...); when it covers two (branch + delay slot) it's a MIPS
+            # branch-likely whose delay slot is annulled on the not-taken path.
+            imark = self.bin_func.opcodes[self.current_inst].ops[0]
+            if len(imark.inputs) == 1:
+                self._conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
+                return
             self.instructions_state[self.current_inst].goto_state[goto_iftrue] = self.instructions_state[
                 self.current_inst
             ].copy()
@@ -485,9 +492,10 @@ class Engine:
         if self._conditional_move_condition is None:
             self.instructions_state[self.current_inst].regs[offset] = val
         else:
+            prior = self._handle_get_register(offset)
             self.instructions_state[self.current_inst].regs[offset] = ConditionalExpression(
                 self._conditional_move_condition,
-                self.instructions_state[self.current_inst].regs[offset],
+                prior,
                 val,
             )
 

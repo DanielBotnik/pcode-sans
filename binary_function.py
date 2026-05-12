@@ -51,6 +51,7 @@ class BinaryFunction:
         self.code_flow_graph: CodeFlowGraph = CodeFlowGraph()
 
         self.__visited_state: _VisitedState = _VisitedState()
+        self.__in_conditional_skip: bool = False
         self.__handlers = {
             pypcode.OpCode.CBRANCH: self._handle_cbranch,
             pypcode.OpCode.BRANCH: self._handle_branch,
@@ -120,11 +121,18 @@ class BinaryFunction:
         if branch_addr == CBRANCH_SKIP_ADDR:
             return
 
+        # ARM conditional execution (MOVNE etc.) emits CBRANCH-to-next-instruction inside
+        # a single-instruction IMARK. Natural fall-through covers it — no CFG edge needed,
+        # and adding one would create a spurious self-loop after the later block split.
+        # MIPS branch-likely (BEQL) also has branch_addr == next_address but uses a
+        # 2-instruction IMARK (branch + delay slot), so it needs the edge.
+        if branch_addr == self._next_address(addr) and len(self.opcodes[addr].ops[0].inputs) == 1:
+            self.__in_conditional_skip = True
+            return
+
         self.code_flow_graph.add_edge(blk.start, branch_addr)
         self._add_address_to_visit(branch_addr)
 
-        # Sometimes the next address is the jump address
-        # future `OpCode.BRANCH` will handle that case
         if branch_addr == self._next_address(addr):
             return
 
@@ -147,10 +155,18 @@ class BinaryFunction:
 
     def _handle_branchind(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
         self.return_blocks[blk.start] = blk
+        if self.__in_conditional_skip:
+            # ARM conditional return (BXNE etc.): the block is a return point AND
+            # continues to the next ARM instruction on the not-taken path.
+            self.__in_conditional_skip = False
+            return
         blk.end = self._next_address(addr) - 1
         return True
 
     def _handle_imark(self, op: pypcode.PcodeOp, addr: int, blk: FunctionBlock):
+        # Reset the cross-op flag at every IMARK so conditional-skip state can't leak
+        # past the ARM instruction that set it.
+        self.__in_conditional_skip = False
         blk._last_instruction_addr = op.inputs[0].offset
         return False
 
