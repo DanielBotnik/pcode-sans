@@ -187,6 +187,14 @@ class BinaryFunction:
                 blk.end = addr - 1
                 break
 
+            if addr not in self.opcodes:
+                # Fell off the end of the function (common for __noreturn callees:
+                # the last instruction is BL <noreturn> and there are no further
+                # opcodes). Treat as a return-style block ending.
+                self.return_blocks[blk.start] = blk
+                blk.end = addr - 1
+                break
+
             self.blocks_dict[addr] = blk
 
             is_last_address = self._iterate_address_instructions(addr, blk)

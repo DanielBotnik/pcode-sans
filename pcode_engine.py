@@ -119,6 +119,7 @@ class Engine:
         pypcode.OpCode.INT_NOTEQUAL: ("!=", False),
         pypcode.OpCode.BOOL_AND: ("&", False),
         pypcode.OpCode.BOOL_OR: ("|", False),
+        pypcode.OpCode.BOOL_XOR: ("^", False),
     }
 
     def __init__(self, bin_func: BinaryFunction):
@@ -607,6 +608,7 @@ class Engine:
         pypcode.OpCode.INT_SBORROW: _do_nothing,
         pypcode.OpCode.BOOL_AND: _handle_binary_op,
         pypcode.OpCode.BOOL_OR: _handle_binary_op,
+        pypcode.OpCode.BOOL_XOR: _handle_binary_op,
         pypcode.OpCode.CBRANCH: _handle_cbranch,
         pypcode.OpCode.BRANCH: _handle_branch,
         pypcode.OpCode.BRANCHIND: _handle_branchind,

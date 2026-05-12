@@ -679,3 +679,108 @@ class TestARMIfElseConstants:
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
         assert engine.return_values == {0, 2}
+
+
+class TestARMConditionalChainOfCalls:
+    # ltrace binary `library_symbol_destroy`:
+    #   if (a0) { arch_library_symbol_destroy(a0); os_library_symbol_destroy(a0);
+    #             return private_library_symbol_destroy(a0); }
+    #   return a0;  // (which is 0 in the null path)
+    CODE = b"\x00\x48\x2d\xe9\x04\xb0\x8d\xe2\x08\xd0\x4d\xe2\x08\x00\x0b\xe5\x08\x30\x1b\xe5\x00\x00\x53\xe3\x05\x00\x00\x0a\x08\x00\x1b\xe5\x1e\xff\xff\xeb\x08\x00\x1b\xe5\x93\x3a\x00\xeb\x08\x00\x1b\xe5\xc0\xff\xff\xeb\x04\xd0\x4b\xe2\x00\x48\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0xDCCC
+    ARCH_DESTROY = 0xD96C
+    OS_DESTROY = 0x1C748
+    PRIVATE_DESTROY = 0xDC04
+
+    def test_three_callsites_in_order(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert [cs.target for cs in engine.callsites] == [
+            self.ARCH_DESTROY, self.OS_DESTROY, self.PRIVATE_DESTROY,
+        ]
+
+    def test_all_calls_first_arg_is_arg0(self):
+        # Each call reloads R0 from the spilled arg0 — verifies the stack-spill
+        # tracking survives across the BLs (clear_after_callsite drops R0 each time).
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        for cs in engine.callsites:
+            assert cs.args[0] == Arg(0)
+
+    def test_null_path_returns_arg0(self):
+        # If arg0 == 0, the function returns arg0 (which is 0) without calls.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert Arg(0) in engine.return_values
+
+    def test_non_null_path_returns_tail_call(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # One of the return values is the private_destroy callsite (tail call)
+        tail_calls = [r for r in engine.return_values
+                      if isinstance(r, CallSite) and r.target == self.PRIVATE_DESTROY]
+        assert len(tail_calls) == 1
+
+    def test_guard_condition(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert len(engine.conditional_sites) == 1
+        cs = engine.conditional_sites[0]
+        assert cs.condition == BinaryOp(Arg(0), 0, "==")
+
+
+class TestARMNoReturn:
+    # ltrace binary `sub_7AA1C`:
+    #   cancel_handler(0);
+    #   __Unwind_Resume(a0);  // __noreturn — no instructions follow this BL.
+    # Before the fix, iteration ran off the end of the function and hit KeyError.
+    CODE = b"\x00\x40\xa0\xe1\x00\x00\xa0\xe3\xb9\xff\xff\xeb\x04\x00\xa0\xe1\xfc\x0c\xff\xeb"
+    ADDR = 0x7AA1C
+    CANCEL_HANDLER = 0x7A910
+    UNWIND_RESUME = 0x3DE24
+
+    def test_analyses_without_crashing(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert len(engine.callsites) == 2
+
+    def test_call_targets_and_args(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert engine.callsites[0].target == self.CANCEL_HANDLER
+        assert engine.callsites[0].args[0] == 0
+        assert engine.callsites[1].target == self.UNWIND_RESUME
+        assert engine.callsites[1].args[0] == Arg(0)
+
+    def test_returns_the_noreturn_call(self):
+        # Even though __Unwind_Resume doesn't return, the engine still treats the
+        # final BL as a tail-call return for the caller's analysis.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        rets = list(engine.return_values)
+        assert len(rets) == 1
+        assert isinstance(rets[0], CallSite)
+        assert rets[0].target == self.UNWIND_RESUME
+
+
+class TestARMDivModHelper:
+    # ltrace binary `__gnu_ldivmod_helper`: uses MUL/UMULL/MLA. The lifter inserts
+    # BOOL_XOR ops for overflow flag computation — exercises the opcode dispatch.
+    CODE = b"\xf8\x43\x2d\xe9\x02\x40\xa0\xe1\x03\x50\xa0\xe1\x00\x80\xa0\xe1\x01\x90\xa0\xe1\x1a\x00\x00\xeb\x94\x01\x02\xe0\x00\x30\xa0\xe1\x94\x60\x87\xe0\x95\x23\x23\xe0\x07\x70\x83\xe0\x20\x30\x9d\xe5\x06\x60\x58\xe0\x07\x70\xc9\xe0\xc0\x00\x83\xe8\xf8\x43\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x3C420
+
+    def test_analyses_without_crashing_on_bool_xor(self):
+        # Before BOOL_XOR was added to the dispatch table, this crashed.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # __divdi3 callsite is captured
+        assert any(cs.target == 0x3C4A4 for cs in engine.callsites)
