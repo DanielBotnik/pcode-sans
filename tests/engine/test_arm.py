@@ -843,3 +843,45 @@ class TestARMConditionalBitSet:
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
         assert engine.return_values == {0}
+
+
+class TestARMVariadicCall:
+    # ltrace binary `report_global_error`:
+    #   do_report(0, 0, "error", a0, va_list_ptr);
+    # 5-arg call where the 5th argument is passed on the stack. Exercises the
+    # stack-argument-collection loop with all 4 reg args set.
+    CODE = b"\x0f\x00\x2d\xe9\x00\x48\x2d\xe9\x04\xb0\x8d\xe2\x10\xd0\x4d\xe2\x08\x30\x8b\xe2\x08\x30\x0b\xe5\x08\x30\x1b\xe5\x00\x30\x8d\xe5\x00\x00\xa0\xe3\x00\x10\xa0\xe3\x14\x20\x9f\xe5\x04\x30\x9b\xe5\xa4\xff\xff\xeb\x04\xd0\x4b\xe2\x00\x48\xbd\xe8\x10\xd0\x8d\xe2\x1e\xff\x2f\xe1"
+    ADDR = 0x27F78
+    DO_REPORT = 0x27E40
+
+    def test_callsite_has_five_arguments(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        cs = engine.callsites[0]
+        assert cs.target == self.DO_REPORT
+        # 4 register args + 1 stack arg
+        assert set(cs.args.keys()) == {0, 1, 2, 3, 4}
+
+    def test_first_three_register_args(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        cs = engine.callsites[0]
+        assert cs.args[0] == 0
+        assert cs.args[1] == 0
+        # arg2 is the literal "error" loaded from the literal pool entry 0x27fbc
+        assert cs.args[2] == UnaryOp(0x27FBC, "*")
+
+    def test_stack_arg_is_pointer_to_va_list(self):
+        # The 5th arg is the address &varg_r1 — a pointer to the saved varargs area
+        # on the stack. After my (a - b) folding it should be sp + (negative const).
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        cs = engine.callsites[0]
+        # arg[4] is a BinaryOp of (sp_register + some constant)
+        assert isinstance(cs.args[4], BinaryOp)
+        assert cs.args[4].op == "+"
+        assert isinstance(cs.args[4].left, Register)
+        assert isinstance(cs.args[4].right, int)
