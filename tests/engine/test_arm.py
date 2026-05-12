@@ -388,3 +388,129 @@ class TestARMLoopWithByteLoad:
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
         assert len(engine.conditional_sites) == 3
+
+
+class TestARMBitManipulation:
+    # ltrace binary `arm_branch_dest`:
+    #   return a0 + 4 * ((a1 & 0xFFFFFF ^ 0x800000) - 0x800000) + 8;
+    # Sign-extends a 24-bit ARM branch offset to 32 bits using BIC/EOR/SUB/LSL/ADD.
+    # Spills both args to the stack frame via R11, then reloads them.
+    CODE = b"\x04\xb0\x2d\xe5\x00\xb0\x8d\xe2\x0c\xd0\x4d\xe2\x08\x00\x0b\xe5\x0c\x10\x0b\xe5\x0c\x30\x1b\xe5\xff\x34\xc3\xe3\x02\x35\x23\xe2\x02\x35\x43\xe2\x03\x31\xa0\xe1\x08\x30\x83\xe2\x08\x20\x1b\xe5\x03\x30\x82\xe0\x03\x00\xa0\xe1\x00\xd0\x8b\xe2\x00\x08\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x154F0
+
+    def test_no_memory_accesses(self):
+        # All STR/LDR are stack-frame spill/reload through R11. The engine should
+        # resolve them all into stack slots, leaving no real memory accesses.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert engine.memory_accesses == []
+
+    def test_return_value_is_sign_extension_expression(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        # Build the expected expression bottom-up:
+        #   (((arg1 & ~0xff000000) ^ 0x800000) - 0x800000) << 2) + 8) + arg0
+        masked = BinaryOp(Arg(1), UnaryOp(0xFF000000, "~"), "&")
+        xored = BinaryOp(masked, 0x800000, "^")
+        subbed = BinaryOp(xored, 0x800000, "-")
+        shifted = BinaryOp(subbed, 2, "<<")
+        with_offset = BinaryOp(shifted, 8, "+")
+        expected = BinaryOp(Arg(0), with_offset, "+")
+        assert engine.return_values == {expected}
+
+
+class TestARMGlobalConditionalInit:
+    # ltrace binary `expr_self`:
+    #   if (!nodep_3071) { expr_init_self(&node_3072); nodep_3071 = (int)&node_3072; }
+    #   return nodep_3071;
+    # Exercises PC-relative literal loads, conditional initialisation, global stores.
+    CODE = b"\x00\x48\x2d\xe9\x04\xb0\x8d\xe2\x34\x30\x9f\xe5\x00\x30\x93\xe5\x00\x00\x53\xe3\x04\x00\x00\x1a\x28\x00\x9f\xe5\x71\xfc\xff\xeb\x1c\x30\x9f\xe5\x1c\x20\x9f\xe5\x00\x20\x83\xe5\x10\x30\x9f\xe5\x00\x30\x93\xe5\x03\x00\xa0\xe1\x04\xd0\x4b\xe2\x00\x48\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x2E9E0
+    EXPR_INIT_SELF = 0x2DBC8
+    NODEP_LITERAL = 0x2EA24  # PC-relative literal pool entry containing &nodep_3071
+    NODE_LITERAL = 0x2EA28   # ... containing &node_3072
+
+    def test_conditional_site_guards_init(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # The BNE at 0x2e9f4 checks "is the global already initialised?" and skips the init.
+        assert len(engine.conditional_sites) == 1
+        cs = engine.conditional_sites[0]
+        assert cs.addr == 0x2E9F4
+        # Condition: deref the literal pool entry to get &nodep_3071, deref again to read it.
+        assert cs.condition == BinaryOp(UnaryOp(UnaryOp(self.NODEP_LITERAL, "*"), "*"), 0, "!=")
+
+    def test_init_callsite(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.callsites) == 1
+        cs = engine.callsites[0]
+        assert cs.target == self.EXPR_INIT_SELF
+        # arg0 is &node_3072 — loaded from the literal pool entry at NODE_LITERAL
+        assert cs.args[0] == UnaryOp(self.NODE_LITERAL, "*")
+
+    def test_global_store_writes_node_pointer(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        # *(*(NODEP_LITERAL)) = *(NODE_LITERAL)
+        # i.e., store &node_3072 into the global pointer nodep_3071.
+        stores = [ma for ma in engine.memory_accesses if ma.access_type == MemoryAccessType.STORE]
+        assert len(stores) == 1
+        assert stores[0].stored_value == UnaryOp(self.NODE_LITERAL, "*")
+
+    def test_returns_global_pointer_value(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        # Final return: deref the literal pool to get &nodep_3071, then deref that to read its value.
+        assert engine.return_values == {UnaryOp(UnaryOp(self.NODEP_LITERAL, "*"), "*")}
+
+
+class TestARMTwoCallsWithStackReload:
+    # ltrace binary `destroy_breakpoint_cb`:
+    #   breakpoint_destroy(a1); free(a1); return 1;
+    # Spills arg0..arg2 then reloads arg1 for both calls.
+    CODE = b"\x00\x48\x2d\xe9\x04\xb0\x8d\xe2\x10\xd0\x4d\xe2\x08\x00\x0b\xe5\x0c\x10\x0b\xe5\x10\x20\x0b\xe5\x0c\x00\x1b\xe5\xf9\x4a\x00\xeb\x0c\x00\x1b\xe5\x16\x54\x01\xeb\x01\x30\xa0\xe3\x03\x00\xa0\xe1\x04\xd0\x4b\xe2\x00\x48\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0xA98C
+    BREAKPOINT_DESTROY = 0x1D594
+    FREE = 0x5FA10
+
+    def test_two_callsites_to_correct_targets(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.callsites) == 2
+        assert engine.callsites[0].target == self.BREAKPOINT_DESTROY
+        assert engine.callsites[1].target == self.FREE
+
+    def test_first_argument_of_both_calls_is_arg1(self):
+        # R0 is reloaded from the stack-spilled arg1 before each call.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert engine.callsites[0].args[0] == Arg(1)
+        assert engine.callsites[1].args[0] == Arg(1)
+
+    def test_returns_one(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert engine.return_values == {1}
+
+    def test_no_real_memory_accesses(self):
+        # Everything is stack-resolved; no actual memory_accesses should remain.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert engine.memory_accesses == []
