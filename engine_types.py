@@ -103,6 +103,8 @@ class BinaryOp:
             return left.left if combined == 0 else BinaryOp(left.left, combined, "+")
         if left.op in BinaryOp._COMPARISON_OPS and right == 0 and op in {"==", "!="}:
             return left.negate() if op == "==" else left
+        if left.op == "-" and right == 0 and op in {"==", "!="}:
+            return BinaryOp(left.left, left.right, op)
         if left.op == "^" and right == 1 and op == "<" and not signed:
             return BinaryOp(left.left, left.right, "==")
 

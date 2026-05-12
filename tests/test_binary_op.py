@@ -86,6 +86,21 @@ class TestArithmeticBinaryOp:
         inner = BinaryOp(Arg(0), 4, "+")
         assert inner == BinaryOp.create_binop(inner, 0, "-")
 
+    def test_sub_compared_with_zero_simplifies(self):
+        # (a - b) == 0 → a == b and (a - b) != 0 → a != b
+        # ARM's CMP lifts as INT_SUB, so this simplification cleans up
+        # condition expressions where CMP feeds INT_EQUAL/INT_NOTEQUAL.
+        assert BinaryOp(Arg(0), Arg(1), "==") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), Arg(1), "-"), 0, "=="
+        )
+        assert BinaryOp(Arg(0), Arg(1), "!=") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), Arg(1), "-"), 0, "!="
+        )
+        # Works with an int right-operand too
+        assert BinaryOp(Arg(0), 5, "==") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, "-"), 0, "=="
+        )
+
     def test_arithmetic_operations_of_integers(self):
         assert 9 == BinaryOp.create_binop(5, 4, "+")
         assert 1 == BinaryOp.create_binop(5, 4, "-")

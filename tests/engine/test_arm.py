@@ -654,3 +654,28 @@ class TestARMLinkedListLoop:
         assert cs.addr == 0x96D4
         assert cs.iftrue == 0x96BC  # back to loop body
         assert cs.iffalse == 0x96D8  # exit
+
+
+class TestARMIfElseConstants:
+    # ltrace binary `event_for_proc`:
+    #   return *(a0+4) == a1 ? 2 : 0;
+    # Two-block if/else returning constants. After my "(a-b) == 0 → a == b"
+    # simplification, the condition reads cleanly as a comparison of two values.
+    CODE = b"\x04\xb0\x2d\xe5\x00\xb0\x8d\xe2\x0c\xd0\x4d\xe2\x08\x00\x0b\xe5\x0c\x10\x0b\xe5\x08\x30\x1b\xe5\x04\x20\x93\xe5\x0c\x30\x1b\xe5\x03\x00\x52\xe1\x01\x00\x00\x1a\x02\x30\xa0\xe3\x00\x00\x00\xea\x00\x30\xa0\xe3\x03\x00\xa0\xe1\x00\xd0\x8b\xe2\x00\x08\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x13C14
+
+    def test_condition_is_simplified_equality(self):
+        # ARM CMP lifts as INT_SUB, but the (a - b) != 0 result should be simplified
+        # to a != b before reaching the conditional site.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        loaded = MemoryAccess(0x13C2C, Arg(0), 0x4, MemoryAccessType.LOAD)
+        assert engine.conditional_sites[0].condition == BinaryOp(loaded, Arg(1), "!=")
+
+    def test_returns_both_constants(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert engine.return_values == {0, 2}
