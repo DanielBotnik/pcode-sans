@@ -391,7 +391,9 @@ class Engine:
         if isinstance(condition, int):  # Sometimes the result is known at analysis time, for example LL/SC instructions
             return
 
-        assert isinstance(condition, BinaryOp)
+        # Conditions are typically comparison BinaryOps, but composite booleans
+        # (BOOL_AND/BOOL_OR/!()) can also drive CBRANCH on ARM.
+        assert isinstance(condition, (BinaryOp, UnaryOp))
 
         if goto_iftrue == CBRANCH_SKIP_ADDR:
             self._conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
@@ -428,8 +430,13 @@ class Engine:
             self._handle_int_negate(op)
             return
 
-        assert isinstance(bool_expr, BinaryOp)
-        self.handle_put(op.output, bool_expr.negate())
+        if isinstance(bool_expr, BinaryOp) and bool_expr.op in {"==", "!=", "<", "<=", ">", ">="}:
+            self.handle_put(op.output, bool_expr.negate())
+            return
+
+        # Composite booleans (e.g. BOOL_AND/BOOL_OR results, double-negation, etc.)
+        # don't have a simple negated form — wrap in a logical-not UnaryOp.
+        self.handle_put(op.output, UnaryOp(bool_expr, "!"))
 
     def _handle_int_negate(self, op: pypcode.PcodeOp):
         int_expr = self.handle_get(op.inputs[0])

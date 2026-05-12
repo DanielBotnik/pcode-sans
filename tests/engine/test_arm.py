@@ -514,3 +514,30 @@ class TestARMTwoCallsWithStackReload:
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
         assert engine.memory_accesses == []
+
+
+class TestARMCompositeBoolean:
+    # ltrace binary `execve`: SVC syscall + CMN R0, #0x1000 + MOVLS/BHI error path.
+    # The post-CMN condition lifts to a BOOL_AND of (CY) and (!(R0+0x1000 == 0)), and
+    # the conditional MOVLS uses a BOOL_NEGATE of that — exercising composite booleans.
+    CODE = b"\x80\x40\x2d\xe9\x0b\x70\xa0\xe3\x00\x00\x00\xef\x01\x0a\x70\xe3\x00\x30\xa0\xe1\x00\x00\xa0\x91\x01\x00\x00\x8a\x80\x40\xbd\xe8\x1e\xff\x2f\xe1\x14\x20\x9f\xe5\x6c\x89\xfe\xeb\x02\x20\x9f\xe7\x00\x30\x63\xe2\x02\x30\x80\xe7\x00\x00\xe0\xe3\xf6\xff\xff\xea"
+    ADDR = 0x9C8B0
+
+    def test_function_analyses_without_crashing(self):
+        # Before the fix, BOOL_NEGATE on a BOOL_AND result raised
+        # "Cannot negate binary operation with operator '&'".
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # Should reach this point and have a meaningful analysis.
+        assert len(engine.callsites) >= 1
+        assert len(engine.conditional_sites) >= 1
+
+    def test_two_return_paths(self):
+        # Normal: syscall result. Error: -1 (lifted as ~0).
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # The error path stores -1; the success path passes through R0.
+        # ~0 (0xFFFFFFFF == -1) should be one of the returns.
+        assert UnaryOp(0, "~") in engine.return_values
