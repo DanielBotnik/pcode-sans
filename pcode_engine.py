@@ -442,6 +442,9 @@ class Engine:
 
     def _handle_int_negate(self, op: pypcode.PcodeOp):
         int_expr = self.handle_get(op.inputs[0])
+        if isinstance(int_expr, int):
+            self.handle_put(op.output, ~int_expr & 0xFFFFFFFF)
+            return
         self.handle_put(op.output, UnaryOp(int_expr, "~"))
 
     def _handle_int_sext(self, op: pypcode.PcodeOp):

@@ -91,7 +91,8 @@ class TestARMMemoryAccess:
         engine.analyze()
 
         load = MemoryAccess(0x148A4, Arg(0), 0x170, MemoryAccessType.LOAD)
-        stored_val = BinaryOp(load, UnaryOp(2, "~"), "&")
+        # BIC #2 lifts as AND with ~2 — the engine evaluates ~2 to 0xFFFFFFFD.
+        stored_val = BinaryOp(load, 0xFFFFFFFD, "&")
         store = MemoryAccess(0x148AC, Arg(0), 0x170, MemoryAccessType.STORE, stored_val)
 
         assert load in engine.memory_accesses
@@ -243,10 +244,7 @@ class TestARMMultipleLoads:
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
 
-        store = next(
-            ma for ma in engine.memory_accesses
-            if ma.access_type == MemoryAccessType.STORE
-        )
+        store = next(ma for ma in engine.memory_accesses if ma.access_type == MemoryAccessType.STORE)
         assert store.addr == 0xAE0E0
         assert store.base == Arg(0)
         assert store.offset == 0x10
@@ -412,8 +410,9 @@ class TestARMBitManipulation:
         engine.analyze()
 
         # Build the expected expression bottom-up:
-        #   (((arg1 & ~0xff000000) ^ 0x800000) - 0x800000) << 2) + 8) + arg0
-        masked = BinaryOp(Arg(1), UnaryOp(0xFF000000, "~"), "&")
+        #   (((arg1 & 0x00ffffff) ^ 0x800000) - 0x800000) << 2) + 8) + arg0
+        # The engine evaluates ~0xff000000 to 0x00ffffff at lift time.
+        masked = BinaryOp(Arg(1), 0x00FFFFFF, "&")
         xored = BinaryOp(masked, 0x800000, "^")
         subbed = BinaryOp(xored, 0x800000, "-")
         shifted = BinaryOp(subbed, 2, "<<")
@@ -431,7 +430,7 @@ class TestARMGlobalConditionalInit:
     ADDR = 0x2E9E0
     EXPR_INIT_SELF = 0x2DBC8
     NODEP_LITERAL = 0x2EA24  # PC-relative literal pool entry containing &nodep_3071
-    NODE_LITERAL = 0x2EA28   # ... containing &node_3072
+    NODE_LITERAL = 0x2EA28  # ... containing &node_3072
 
     def test_conditional_site_guards_init(self):
         project = Project("ARM:LE:32:v7")
@@ -534,13 +533,12 @@ class TestARMCompositeBoolean:
         assert len(engine.conditional_sites) >= 1
 
     def test_two_return_paths(self):
-        # Normal: syscall result. Error: -1 (lifted as ~0).
+        # Normal: syscall result. Error: -1 (lifted as ~0 → evaluated to 0xFFFFFFFF).
         project = Project("ARM:LE:32:v7")
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
-        # The error path stores -1; the success path passes through R0.
-        # ~0 (0xFFFFFFFF == -1) should be one of the returns.
-        assert UnaryOp(0, "~") in engine.return_values
+        # MOV R0, #0xFFFFFFFF lifts as INT_NEGATE(0), which the engine evaluates to 0xFFFFFFFF.
+        assert 0xFFFFFFFF in engine.return_values
 
 
 class TestARMPointerArithmeticCall:
@@ -697,7 +695,9 @@ class TestARMConditionalChainOfCalls:
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
         assert [cs.target for cs in engine.callsites] == [
-            self.ARCH_DESTROY, self.OS_DESTROY, self.PRIVATE_DESTROY,
+            self.ARCH_DESTROY,
+            self.OS_DESTROY,
+            self.PRIVATE_DESTROY,
         ]
 
     def test_all_calls_first_arg_is_arg0(self):
@@ -721,8 +721,7 @@ class TestARMConditionalChainOfCalls:
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
         # One of the return values is the private_destroy callsite (tail call)
-        tail_calls = [r for r in engine.return_values
-                      if isinstance(r, CallSite) and r.target == self.PRIVATE_DESTROY]
+        tail_calls = [r for r in engine.return_values if isinstance(r, CallSite) and r.target == self.PRIVATE_DESTROY]
         assert len(tail_calls) == 1
 
     def test_guard_condition(self):
