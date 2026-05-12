@@ -811,3 +811,35 @@ class TestARMConditionalExpressionInCondition:
         engine.analyze()
         # Just verify the conditional analysis still works at all
         assert len(engine.conditional_sites) > 0
+
+
+class TestARMConditionalBitSet:
+    # ltrace binary `arch_fetch_param_pack_start`:
+    #   if (a1 == 1) *(_BYTE *)(a0 + 0x170) |= 2;
+    #   return 0;
+    # The "OR" counterpart of TestARMMemoryAccess (BIC/AND).
+    CODE = b"\x04\xb0\x2d\xe5\x00\xb0\x8d\xe2\x0c\xd0\x4d\xe2\x08\x00\x0b\xe5\x0c\x10\x0b\xe5\x0c\x30\x1b\xe5\x01\x00\x53\xe3\x03\x00\x00\x1a\x08\x20\x1b\xe5\x70\x31\xd2\xe5\x02\x30\x83\xe3\x70\x31\xc2\xe5\x00\x30\xa0\xe3\x03\x00\xa0\xe1\x00\xd0\x8b\xe2\x00\x08\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x1484C
+
+    def test_guarded_load_and_or_store(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        load = MemoryAccess(0x14870, Arg(0), 0x170, MemoryAccessType.LOAD)
+        store = MemoryAccess(0x14878, Arg(0), 0x170, MemoryAccessType.STORE, BinaryOp(load, 2, "|"))
+        assert load in engine.memory_accesses
+        assert store in engine.memory_accesses
+
+    def test_condition_is_arg1_neq_one(self):
+        # BNE on (a1 == 1) — the engine simplifies (a1 - 1) != 0 to a1 != 1
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert engine.conditional_sites[0].condition == BinaryOp(Arg(1), 1, "!=")
+
+    def test_returns_zero_unconditionally(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert engine.return_values == {0}
