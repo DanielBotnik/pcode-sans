@@ -541,3 +541,116 @@ class TestARMCompositeBoolean:
         # The error path stores -1; the success path passes through R0.
         # ~0 (0xFFFFFFFF == -1) should be one of the returns.
         assert UnaryOp(0, "~") in engine.return_values
+
+
+class TestARMPointerArithmeticCall:
+    # ltrace binary `type_init_struct`:
+    #   type_init_common(a0, 11);
+    #   return vect_init(a0 + 4, 8);
+    # Exercises a tail-call where the first arg is computed by pointer arithmetic.
+    CODE = b"\x00\x48\x2d\xe9\x04\xb0\x8d\xe2\x08\xd0\x4d\xe2\x08\x00\x0b\xe5\x08\x00\x1b\xe5\x0b\x10\xa0\xe3\xe7\xff\xff\xeb\x08\x30\x1b\xe5\x04\x30\x83\xe2\x03\x00\xa0\xe1\x08\x10\xa0\xe3\xb9\x93\xff\xeb\x04\xd0\x4b\xe2\x00\x48\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x2B2F4
+    TYPE_INIT_COMMON = 0x2B2B0
+    VECT_INIT = 0x1020C
+
+    def test_first_call_is_type_init_common(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        cs = engine.callsites[0]
+        assert cs.target == self.TYPE_INIT_COMMON
+        assert cs.args[0] == Arg(0)
+        assert cs.args[1] == 11
+
+    def test_tail_call_uses_offset_pointer(self):
+        # vect_init's first arg is a0+4 (computed by ADD R3, R3, #4 after stack reload).
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        cs = engine.callsites[1]
+        assert cs.target == self.VECT_INIT
+        assert cs.args[0] == BinaryOp(Arg(0), 4, "+")
+        assert cs.args[1] == 8
+
+    def test_returns_tail_call(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # The function returns the result of vect_init (tail call)
+        ret = next(iter(engine.return_values))
+        assert isinstance(ret, CallSite)
+        assert ret.target == self.VECT_INIT
+
+
+class TestARMBooleanReturn:
+    # ltrace binary `library_with_key_cb`:
+    #   return *(_DWORD *)(a1 + 4) != *a2;
+    # Lifts as MOVEQ/MOVNE pair on the same CMP result — nested ConditionalExpressions.
+    CODE = b"\x04\xb0\x2d\xe5\x00\xb0\x8d\xe2\x14\xd0\x4d\xe2\x08\x00\x0b\xe5\x0c\x10\x0b\xe5\x10\x20\x0b\xe5\x0c\x30\x1b\xe5\x04\x20\x93\xe5\x10\x30\x1b\xe5\x00\x30\x93\xe5\x03\x00\x52\xe1\x00\x30\xa0\x03\x01\x30\xa0\x13\x03\x00\xa0\xe1\x00\xd0\x8b\xe2\x00\x08\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0xE960
+
+    def test_loads_both_struct_fields(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert MemoryAccess(0xE97C, Arg(1), 0x4, MemoryAccessType.LOAD) in engine.memory_accesses
+        assert MemoryAccess(0xE984, Arg(2), 0, MemoryAccessType.LOAD) in engine.memory_accesses
+
+    def test_two_conditional_moves_create_two_sites(self):
+        # MOVEQ R3, #0 followed by MOVNE R3, #1 on the same CMP
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert len(engine.conditional_sites) == 2
+
+    def test_returns_include_both_boolean_constants(self):
+        # The MOVEQ→MOVNE chain produces nested ConditionalExpressions whose
+        # collect_values yields both boolean constants. (The intermediate "leftover"
+        # value from MOVEQ's NE branch is unreachable in practice but appears here
+        # because the engine doesn't reason about inverse-condition correlation.)
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert 0 in engine.return_values
+        assert 1 in engine.return_values
+
+
+class TestARMLinkedListLoop:
+    # ltrace binary `slist_chase_end`:
+    #   while (*a0) a0 = *(_DWORD **)a0;
+    #   return a0;
+    # Two-block loop walking a linked list — exits when the deref is NULL.
+    CODE = b"\x04\xb0\x2d\xe5\x00\xb0\x8d\xe2\x0c\xd0\x4d\xe2\x08\x00\x0b\xe5\x02\x00\x00\xea\x08\x30\x1b\xe5\x00\x30\x93\xe5\x08\x30\x0b\xe5\x08\x30\x1b\xe5\x00\x30\x93\xe5\x00\x00\x53\xe3\xf8\xff\xff\x1a\x08\x30\x1b\xe5\x03\x00\xa0\xe1\x00\xd0\x8b\xe2\x00\x08\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x96A8
+
+    def test_loop_detected(self):
+        project = Project("ARM:LE:32:v7")
+        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        assert len(bf.loops_dict_start_address) == 1
+        loop = bf.loops_dict_start_address[0x96C8][0]
+        assert loop.blocks == {0x96C8, 0x96BC}
+
+    def test_loop_exit_condition_at_bne(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        loop = engine.loops_dict_start_address[0x96C8][0]
+        assert set(loop.exit_conditions.keys()) == {0x96D4}
+        # Loop exits when the dereferenced pointer is NULL
+        exit_cond = loop.exit_conditions[0x96D4]
+        # Exit condition compares the loaded value with 0
+        assert isinstance(exit_cond, BinaryOp)
+        assert exit_cond.op == "=="
+        assert exit_cond.right == 0
+
+    def test_conditional_site_at_loop_tail(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # Just one conditional site: the BNE at 0x96d4 driving the loop back-edge
+        assert len(engine.conditional_sites) == 1
+        cs = engine.conditional_sites[0]
+        assert cs.addr == 0x96D4
+        assert cs.iftrue == 0x96BC  # back to loop body
+        assert cs.iffalse == 0x96D8  # exit
