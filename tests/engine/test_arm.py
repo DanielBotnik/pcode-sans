@@ -532,6 +532,27 @@ class TestARMCompositeBoolean:
         assert len(engine.callsites) >= 1
         assert len(engine.conditional_sites) >= 1
 
+    def test_movls_r0_r0_keeps_r0_unchanged(self):
+        # MOVLS R0, R0 is conditional-move-to-self: both branches are R0, so the
+        # register is unchanged regardless of the condition. The ConditionalExpression
+        # wrapper must collapse to the plain value.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        r0_offset = project.arch_regs.arguments[0]
+        assert engine.instructions_state[0x9C8C4].regs[r0_offset] == Arg(0)
+
+    def test_bhi_condition_matches_ida_decompilation(self):
+        # The IDA decompilation reads `if (result > 0xFFFFF000)`. After CMN R0, #0x1000
+        # sets the flags and BHI checks (C & !Z), the engine should resolve the carry
+        # against the constant and combine with the not-equal check to produce the
+        # same comparison.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        bhi = next(cs for cs in engine.conditional_sites if cs.addr == 0x9C8C8)
+        assert bhi.condition == BinaryOp(Arg(0), 0xFFFFF000, ">")
+
     def test_two_return_paths(self):
         # Normal: syscall result. Error: -1 (lifted as ~0 → evaluated to 0xFFFFFFFF).
         project = Project("ARM:LE:32:v7")

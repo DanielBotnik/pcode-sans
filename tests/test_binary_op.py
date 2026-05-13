@@ -120,6 +120,56 @@ class TestArithmeticBinaryOp:
             BinaryOp(Arg(0), Arg(1), "^"), 1, "<", signed=False
         )
 
+    def test_add_constant_compared_with_zero(self):
+        # (a + c) == 0 ⟺ a == -c (mod 2^32) — pull the constant across the comparison.
+        # ARM CMN feeds INT_EQUAL with this exact shape and we want a clean equality.
+        assert BinaryOp(Arg(0), 0xFFFFF000, "==") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 0x1000, "+"), 0, "=="
+        )
+        assert BinaryOp(Arg(0), 0xFFFFFFFB, "!=") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, "+"), 0, "!="
+        )
+
+
+class TestCombineComparisons:
+    def test_and_collapses_redundant_pair(self):
+        # (a >= c) & (a != c) → a > c, and the symmetric (a <= c) & (a != c) → a < c.
+        # This is the shape ARM produces after CMN-then-BHI once INT_CARRY is lifted.
+        assert BinaryOp(Arg(0), 5, ">") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, ">="), BinaryOp(Arg(0), 5, "!="), "&"
+        )
+        assert BinaryOp(Arg(0), 5, "<") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, "<="), BinaryOp(Arg(0), 5, "!="), "&"
+        )
+
+    def test_or_union_of_disjoint_pieces(self):
+        # (a < c) | (a == c) → a <= c — the union of the strict-less and equality sets.
+        # Shows up on ARM's MOVLS skip condition (!CY | ZR).
+        assert BinaryOp(Arg(0), 5, "<=") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, "<"), BinaryOp(Arg(0), 5, "=="), "|"
+        )
+        assert BinaryOp(Arg(0), 5, ">=") == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, ">"), BinaryOp(Arg(0), 5, "=="), "|"
+        )
+
+    def test_empty_intersection_collapses_to_zero(self):
+        # (a > c) & (a < c) is impossible — the engine should collapse to 0.
+        assert 0 == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, ">"), BinaryOp(Arg(0), 5, "<"), "&"
+        )
+
+    def test_full_union_collapses_to_one(self):
+        # (a == c) | (a != c) covers everything → 1.
+        assert 1 == BinaryOp.create_binop(
+            BinaryOp(Arg(0), 5, "=="), BinaryOp(Arg(0), 5, "!="), "|"
+        )
+
+    def test_does_not_combine_when_operands_differ(self):
+        # Only same-operand comparisons combine — different left or right operands stay.
+        lhs = BinaryOp(Arg(0), 5, ">=")
+        rhs = BinaryOp(Arg(0), 6, "!=")  # different right operand
+        assert BinaryOp(lhs, rhs, "&") == BinaryOp.create_binop(lhs, rhs, "&")
+
     def test_arithmetic_operations_of_integers(self):
         assert 9 == BinaryOp.create_binop(5, 4, "+")
         assert 1 == BinaryOp.create_binop(5, 4, "-")

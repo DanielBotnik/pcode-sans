@@ -420,6 +420,23 @@ class Engine:
     def _do_nothing(self, op: pypcode.PcodeOp):
         pass
 
+    def _handle_int_carry(self, op: pypcode.PcodeOp):
+        # INT_CARRY(a, b) = 1 iff (a + b) overflows past 0xFFFFFFFF.
+        # For constant b > 0: (a + b) > MAX ⟺ a >= (-b) & MAX. This direct
+        # form lets later equality-with-zero and comparison-combining rules
+        # produce clean conditions (e.g. ARM CMN-then-BHI lifts to `a > c`).
+        a = self.handle_get(op.inputs[0])
+        b = self.handle_get(op.inputs[1])
+        if isinstance(a, int) and isinstance(b, int):
+            self.handle_put(op.output, 1 if (a + b) > 0xFFFFFFFF else 0)
+            return
+        if isinstance(b, int) or isinstance(a, int):
+            const, expr = (b, a) if isinstance(b, int) else (a, b)
+            self.handle_put(op.output, 0 if const == 0 else BinaryOp(expr, (-const) & 0xFFFFFFFF, ">="))
+            return
+        # Symbolic both sides: ~a < b unsigned is equivalent.
+        self.handle_put(op.output, BinaryOp(UnaryOp(a, "~"), b, "<"))
+
     def _handle_branchind(self, op: pypcode.PcodeOp):
         target = self.handle_get(op.inputs[0])
 
@@ -522,15 +539,13 @@ class Engine:
         return Engine._GET_HANDLERS[input.space.name](self, input.offset)
 
     def _handle_put_register(self, offset: int, val: Value):
-        if self._conditional_move_condition is None:
-            self.instructions_state[self.current_inst].regs[offset] = val
-        else:
+        if self._conditional_move_condition is not None:
             prior = self._handle_get_register(offset)
-            self.instructions_state[self.current_inst].regs[offset] = ConditionalExpression(
-                self._conditional_move_condition,
-                prior,
-                val,
-            )
+            if prior != val:
+                # When both branches of a conditional move agree, the register is
+                # unchanged regardless of the condition (e.g. ARM MOVLS R0, R0).
+                val = ConditionalExpression(self._conditional_move_condition, prior, val)
+        self.instructions_state[self.current_inst].regs[offset] = val
 
     def _handle_put_unique(self, offset: int, val: Value):
         self.instructions_state[self.current_inst].unique[offset] = val
@@ -610,7 +625,7 @@ class Engine:
         pypcode.OpCode.CALL: _handle_call,
         pypcode.OpCode.CALLIND: _handle_callind,
         pypcode.OpCode.CALLOTHER: _do_nothing,  # TODO: Think if required, example is MIPS `rdhwr` in `sshd` `fileno` Function
-        pypcode.OpCode.INT_CARRY: _do_nothing,
+        pypcode.OpCode.INT_CARRY: _handle_int_carry,
         pypcode.OpCode.INT_SCARRY: _do_nothing,
         pypcode.OpCode.INT_SBORROW: _do_nothing,
         pypcode.OpCode.BOOL_AND: _handle_binary_op,

@@ -83,6 +83,33 @@ class BinaryOp:
     _COMPARISON_OPS = {"==", "!=", "<", "<=", ">", ">="}
     _MONOID = {"+": 0, "*": 1, "|": 0, "^": 0, "-": 0}
 
+    # Each comparison `a OP c` is the set of integers (lt-of-c, eq-c, gt-of-c)
+    # included. Combining two comparisons on the same (a, c) under & or | is
+    # then bitwise AND / OR of these tuples, mapped back to an operator.
+    _COMPARISON_SETS = {
+        "==": (False, True, False),
+        "!=": (True, False, True),
+        "<":  (True, False, False),
+        "<=": (True, True, False),
+        ">":  (False, False, True),
+        ">=": (False, True, True),
+    }
+    _SETS_TO_COMPARISON = {
+        **{v: k for k, v in _COMPARISON_SETS.items()},
+        (False, False, False): 0,
+        (True, True, True): 1,
+    }
+
+    @staticmethod
+    def _combine_comparisons(op1: str, op2: str, combiner: str):
+        s1 = BinaryOp._COMPARISON_SETS[op1]
+        s2 = BinaryOp._COMPARISON_SETS[op2]
+        if combiner == "&":
+            combined = tuple(a and b for a, b in zip(s1, s2))
+        else:  # "|"
+            combined = tuple(a or b for a, b in zip(s1, s2))
+        return BinaryOp._SETS_TO_COMPARISON[combined]
+
     @staticmethod
     def create_binop(left: Value, right: Value, op: str, signed: bool = False) -> Value:
         if isinstance(left, int) and isinstance(right, int):
@@ -94,6 +121,18 @@ class BinaryOp:
         # x <u 1 ≡ x == 0 — rewrite so the equality-zero rules below apply uniformly.
         if right == 1 and op == "<" and not signed:
             return BinaryOp.create_binop(left, 0, "==")
+        # Combine two comparisons on the same (a, c) under & or |.
+        if (
+            op in {"&", "|"}
+            and isinstance(left, BinaryOp)
+            and isinstance(right, BinaryOp)
+            and left.op in BinaryOp._COMPARISON_OPS
+            and right.op in BinaryOp._COMPARISON_OPS
+            and left.left == right.left
+            and left.right == right.right
+        ):
+            combined = BinaryOp._combine_comparisons(left.op, right.op, op)
+            return combined if isinstance(combined, int) else BinaryOp(left.left, left.right, combined)
         if not (isinstance(left, BinaryOp) and isinstance(right, int)):
             return BinaryOp(left, right, op, signed)
 
@@ -110,6 +149,9 @@ class BinaryOp:
         # Both - and ^ are zero exactly when their operands are equal — lift to comparison.
         if left.op in {"-", "^"} and right == 0 and op in {"==", "!="}:
             return BinaryOp(left.left, left.right, op)
+        # (a + c) ==/!= 0 ⟺ a ==/!= -c (mod 2^32) — pull the constant across the comparison.
+        if left.op == "+" and right == 0 and op in {"==", "!="} and isinstance(left.right, int):
+            return BinaryOp(left.left, (-left.right) & 0xFFFFFFFF, op)
 
         return BinaryOp(left, right, op, signed)
 
