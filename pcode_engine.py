@@ -135,6 +135,7 @@ class Engine:
         self.current_blk: FunctionBlock = FunctionBlock(0, self.bin_func)  # Temporal initialization
         self._unfinished_condsite: Optional[_UnfinishedConditionalSite] = None
         self._conditional_move_condition: Optional[ConditionalSite] = None
+        self._conditional_move_recorded: bool = False
         self._first_stack_access: Optional[Register] = None
         self._return_values: Optional[set[Value]] = None
 
@@ -206,6 +207,7 @@ class Engine:
         self.current_inst = op.inputs[0].offset
         self._unfinished_condsite = None
         self._conditional_move_condition = None
+        self._conditional_move_recorded = False
 
         self._filter_loop_back_edges()
         self.instructions_state[self.current_inst] = self._compute_entry_state()
@@ -281,6 +283,10 @@ class Engine:
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
 
     def _handle_store(self, op: pypcode.PcodeOp):
+        # A conditional store (ARM STRNE etc.) is itself an observable effect — record
+        # any deferred conditional-move site so the conditional is preserved.
+        self._consume_conditional_move()
+
         space = op.inputs[0].getSpaceFromConst().name
         offset = self.handle_get(op.inputs[1])
         val = self.handle_get(op.inputs[2])
@@ -325,6 +331,9 @@ class Engine:
         self._handle_callind(op)
 
     def _create_callsite(self, target: Value) -> CallSite:
+        # A conditional call (ARM BLNE etc.) is itself an observable effect — record
+        # any deferred conditional-move site before the call is registered.
+        self._consume_conditional_move()
         resolved_target = self._extract_target(target)
         args = self._collect_call_arguments()
 
@@ -398,7 +407,7 @@ class Engine:
         assert not isinstance(condition, int)
 
         if goto_iftrue == CBRANCH_SKIP_ADDR:
-            self._conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
+            self._defer_conditional_move(condition, goto_iftrue, goto_iffalse)
             return
 
         if goto_iffalse == goto_iftrue:
@@ -407,7 +416,7 @@ class Engine:
             # branch-likely whose delay slot is annulled on the not-taken path.
             imark = self.bin_func.opcodes[self.current_inst].ops[0]
             if len(imark.inputs) == 1:
-                self._conditional_move_condition = self._create_condsite(condition, goto_iftrue, goto_iffalse)
+                self._defer_conditional_move(condition, goto_iftrue, goto_iffalse)
                 return
             self.instructions_state[self.current_inst].goto_state[goto_iftrue] = self.instructions_state[
                 self.current_inst
@@ -416,6 +425,16 @@ class Engine:
             return
 
         self._create_condsite(condition, goto_iftrue, goto_iffalse)
+
+    def _defer_conditional_move(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> None:
+        # Don't record the conditional site yet — an ARM MOVLS R0, R0 (or any
+        # cmove with matching branches) leaves the register untouched and produces
+        # no observable effect. The site is registered on first use in
+        # _handle_put_register, when a register write actually wraps with it.
+        self._conditional_move_condition = ConditionalSite(
+            self.current_inst, condition, goto_iftrue, goto_iffalse
+        )
+        self._conditional_move_recorded = False
 
     def _do_nothing(self, op: pypcode.PcodeOp):
         pass
@@ -538,12 +557,20 @@ class Engine:
     def handle_get(self, input: pypcode.Varnode | _FakeVarnode) -> Value:
         return Engine._GET_HANDLERS[input.space.name](self, input.offset)
 
+    def _consume_conditional_move(self) -> None:
+        """Record a deferred conditional-move site once it has an observable effect."""
+        if self._conditional_move_condition is not None and not self._conditional_move_recorded:
+            self.conditional_sites.append(self._conditional_move_condition)
+            self._conditional_move_recorded = True
+
     def _handle_put_register(self, offset: int, val: Value):
         if self._conditional_move_condition is not None:
             prior = self._handle_get_register(offset)
             if prior != val:
-                # When both branches of a conditional move agree, the register is
-                # unchanged regardless of the condition (e.g. ARM MOVLS R0, R0).
+                # First time the deferred conditional-move site is actually
+                # consumed — register it now. If both branches agree (e.g.
+                # ARM MOVLS R0, R0) the site is never recorded.
+                self._consume_conditional_move()
                 val = ConditionalExpression(self._conditional_move_condition, prior, val)
         self.instructions_state[self.current_inst].regs[offset] = val
 

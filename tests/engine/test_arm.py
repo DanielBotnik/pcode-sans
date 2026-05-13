@@ -290,12 +290,14 @@ class TestARMConditionalCallChain:
         assert engine.callsites[1].args[0] == BinaryOp(strlen_call, 1, "+")
 
     def test_blne_creates_conditional_execution_chain(self):
-        # 4 ARM conditional instructions: MOVEQ R0, R3; MOVNE R1, R5; MOVNE R2, R4; BLNE memcpy
+        # 4 ARM conditional instructions: MOVEQ R0, R3; MOVNE R1, R5; MOVNE R2, R4; BLNE memcpy.
+        # MOVEQ R0, R3 is a no-op (SUBS R3, R0, #0 sets R3 = R0, so MOVEQ R0, R3
+        # is "R0 = R0 if EQ" — observably nothing) and is dropped. Three remain.
         project = Project("ARM:LE:32:v7")
         engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
         engine.analyze()
 
-        assert len(engine.conditional_sites) == 4
+        assert len(engine.conditional_sites) == 3
 
 
 class TestARMStackSpill:
@@ -541,6 +543,15 @@ class TestARMCompositeBoolean:
         engine.analyze()
         r0_offset = project.arch_regs.arguments[0]
         assert engine.instructions_state[0x9C8C4].regs[r0_offset] == Arg(0)
+
+    def test_movls_r0_r0_is_not_recorded_as_conditional_site(self):
+        # The deferred conditional-move site at MOVLS R0, R0 has no observable
+        # effect, so it should never reach conditional_sites — the only site is BHI.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        assert len(engine.conditional_sites) == 1
+        assert engine.conditional_sites[0].addr == 0x9C8C8  # BHI, not MOVLS at 0x9c8c4
 
     def test_bhi_condition_matches_ida_decompilation(self):
         # The IDA decompilation reads `if (result > 0xFFFFF000)`. After CMN R0, #0x1000
