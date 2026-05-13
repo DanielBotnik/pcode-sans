@@ -31,7 +31,9 @@ class InstructionState:
         self.stack: dict[int, Value] = {}
         self.last_callsite: Optional[CallSite] = None
         self.goto_state: dict[int, InstructionState] = dict()
-        self.used_arguments: set[int] = set()
+        # frozenset so state.copy() can share the same object — the only mutation
+        # site (loop-cleared registers) does `set = set | {offset}` to fork a new one.
+        self.used_arguments: frozenset[int] = frozenset()
 
     def copy(self) -> InstructionState:
         new_state = InstructionState()
@@ -40,7 +42,7 @@ class InstructionState:
         new_state.ram = self.ram.copy()
         new_state.stack = self.stack.copy()
         new_state.last_callsite = self.last_callsite
-        new_state.used_arguments = self.used_arguments.copy()
+        new_state.used_arguments = self.used_arguments
         return new_state
 
     @staticmethod
@@ -180,13 +182,9 @@ class Engine:
         return self._return_values
 
     def _handle_binary_op(self, op: pypcode.PcodeOp):
-        op_symbol, signed = self._BINARY_OP_SYMBOLS[op.opcode]
+        op_symbol, signed = self._BINARY_OP_SYMBOLS[op.opcode.value]
         left = self.handle_get(op.inputs[0])
         right = self.handle_get(op.inputs[1])
-
-        if op.output is None:
-            raise ValueError("Output of binary operation is None")
-
         self.handle_put(op.output, BinaryOp.create_binop(left, right, op_symbol, signed))
 
     def _analyze_block(self, blk: FunctionBlock):
@@ -195,7 +193,7 @@ class Engine:
 
         while current_address < blk.end:
             for op in self.bin_func.opcodes[current_address].ops:
-                Engine._OPCODE_HANDLERS[op.opcode](self, op)
+                Engine._OPCODE_HANDLERS[op.opcode.value](self, op)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
     def _get_block_and_state_from_mark(self, mark: int) -> tuple[FunctionBlock, InstructionState]:
@@ -266,6 +264,8 @@ class Engine:
         return current_state
 
     def _clear_looped_registers(self):
+        state = self.instructions_state[self.current_inst]
+        new_used = set(state.used_arguments)
         for loop in self.loops_dict[self.current_inst]:
             for blk in loop.blocks:
                 current_blk = self.bin_func.blocks_dict[blk]
@@ -274,10 +274,10 @@ class Engine:
                     for op in self.bin_func.opcodes[current_address].ops:
                         if op.output is None or op.output.space.name != "register":
                             continue
-
-                        self.instructions_state[self.current_inst].regs.pop(op.output.offset, None)
-                        self.instructions_state[self.current_inst].used_arguments.add(op.output.offset)
+                        state.regs.pop(op.output.offset, None)
+                        new_used.add(op.output.offset)
                     current_address += self.bin_func.opcodes[current_address].bytes_size
+        state.used_arguments = frozenset(new_used)
 
     def _handle_copy(self, op: pypcode.PcodeOp):
         self.handle_put(op.output, self.handle_get(op.inputs[0]))
@@ -555,7 +555,12 @@ class Engine:
         return self.instructions_state[self.current_inst].unique.get(offset)
 
     def handle_get(self, input: pypcode.Varnode | _FakeVarnode) -> Value:
-        return Engine._GET_HANDLERS[input.space.name](self, input.offset)
+        name = input.space.name
+        if name == "register":
+            return self._handle_get_register(input.offset)
+        if name == "const" or name == "ram":
+            return input.offset
+        return self.instructions_state[self.current_inst].unique.get(input.offset)
 
     def _consume_conditional_move(self) -> None:
         """Record a deferred conditional-move site once it has an observable effect."""
@@ -580,7 +585,10 @@ class Engine:
     def handle_put(self, output: pypcode.Varnode | None, val: Value):
         if output is None:
             return
-        Engine._PUT_HANDLERS[output.space.name](self, output.offset, val)
+        if output.space.name == "register":
+            self._handle_put_register(output.offset, val)
+        else:
+            self.instructions_state[self.current_inst].unique[output.offset] = val
 
     def _extract_target(self, target: Value) -> Value:
         if self.project.arch_regs.does_isa_switches and isinstance(target, BinaryOp):
@@ -681,3 +689,10 @@ class Engine:
         "unique": _handle_get_unique,
         "ram": _handle_get_const,
     }
+
+
+# Re-key the per-op dispatch tables by OpCode.value (int). IntEnum hashing
+# walks the enum's name string, which adds up over millions of dispatches in
+# longer analyses — int hashing is a no-op.
+Engine._OPCODE_HANDLERS = {k.value: v for k, v in Engine._OPCODE_HANDLERS.items()}
+Engine._BINARY_OP_SYMBOLS = {k.value: v for k, v in Engine._BINARY_OP_SYMBOLS.items()}
