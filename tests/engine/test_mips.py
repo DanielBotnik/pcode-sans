@@ -52,9 +52,7 @@ class TestMIPSConditionalEarlyReturnWithCall:
         n_minus_1 = BinaryOp(n, 0xFFFFFFFF, "+")
         a0_0 = MemoryAccess(0x4797F0, Arg(0), 0, MemoryAccessType.LOAD)
         # The address a0[0] + 4*(n-1) is split into base=*(arg0), offset=(n-1)<<2.
-        assert cs.args[0] == MemoryAccess(
-            0x479804, a0_0, BinaryOp(n_minus_1, 2, "<<"), MemoryAccessType.LOAD
-        )
+        assert cs.args[0] == MemoryAccess(0x479804, a0_0, BinaryOp(n_minus_1, 2, "<<"), MemoryAccessType.LOAD)
 
     def test_return_values(self):
         project = Project("MIPS:BE:32:default")
