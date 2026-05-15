@@ -28,13 +28,21 @@ class Project:
     # could never run and a second Project could never be created).
     _current: "weakref.ref[Project] | None" = None
 
+    _cached_context_defaults: Mapping[str | pypcode.ArchLanguage, pypcode.Context] = dict()
+
     def __init__(self, language: str | pypcode.ArchLanguage):
         if Project._live() is not None:
             raise RuntimeError(
-                "A Project already exists; release it (it must be __del__'d) "
-                "before constructing another"
+                "A Project already exists; release it (it must be __del__'d) before constructing another"
             )
-        self.context = pypcode.Context(language)
+
+        if language in Project._cached_context_defaults:
+            context = Project._cached_context_defaults[language]
+        else:
+            context = pypcode.Context(language)
+            Project._cached_context_defaults[language] = context
+
+        self.context = context
         self.arch_regs = Project._create_arch_registers(self.context)
         Project._current = weakref.ref(self)
 
