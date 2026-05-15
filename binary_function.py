@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pypcode
+import weakref
 
 from dataclasses import dataclass, field
 from cfg import CodeFlowGraph
@@ -52,13 +53,6 @@ class BinaryFunction:
 
         self.__visited_state: _VisitedState = _VisitedState()
         self.__in_conditional_skip: bool = False
-        self.__handlers = {
-            pypcode.OpCode.CBRANCH: self._handle_cbranch,
-            pypcode.OpCode.BRANCH: self._handle_branch,
-            pypcode.OpCode.BRANCHIND: self._handle_branchind,
-            pypcode.OpCode.RETURN: self._handle_branchind,
-            pypcode.OpCode.IMARK: self._handle_imark,
-        }
 
         self._init_opcodes()
         self._init_function_nodes()
@@ -174,9 +168,9 @@ class BinaryFunction:
         is_last_address = False
 
         for op in self.opcodes[addr].ops:
-            handler = self.__handlers.get(op.opcode)
+            handler = BinaryFunction._HANDLERS.get(op.opcode)
             if handler is not None:
-                is_last_address = handler(op, addr, blk)
+                is_last_address = handler(self, op, addr, blk)
 
         return is_last_address
 
@@ -252,15 +246,35 @@ class BinaryFunction:
             addr2 = addr2.start
         return self.code_flow_graph.first_common_ancestor(addr1, addr2)
 
+    # Class-level so the dict holds unbound functions, not bound methods. An
+    # instance dict of `self._handle_*` would self-reference (bf -> dict ->
+    # bound method -> bf) and defer the whole graph to cyclic GC.
+    _HANDLERS = {
+        pypcode.OpCode.CBRANCH: _handle_cbranch,
+        pypcode.OpCode.BRANCH: _handle_branch,
+        pypcode.OpCode.BRANCHIND: _handle_branchind,
+        pypcode.OpCode.RETURN: _handle_branchind,
+        pypcode.OpCode.IMARK: _handle_imark,
+    }
+
 
 class FunctionBlock:
 
     def __init__(self, start: int, function: BinaryFunction, end: int = -1):
         self.start = start
         self.end = end
-        self.function = function
+        # Weak: BinaryFunction holds all its FunctionBlocks, so a strong back-ref
+        # would form a cycle and defer the whole graph (and the Project it pins)
+        # to cyclic GC instead of prompt refcount collection.
+        self._function = weakref.ref(function)
 
         self._last_instruction_addr: int | None = None
+
+    @property
+    def function(self) -> BinaryFunction:
+        fn = self._function()
+        assert fn is not None, "FunctionBlock outlived its BinaryFunction"
+        return fn
 
     @property
     def last_instruction_addr(self) -> int:
