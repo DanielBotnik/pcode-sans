@@ -1,4 +1,5 @@
 from typing import Mapping
+import weakref
 import pypcode
 
 from dataclasses import dataclass
@@ -18,22 +19,40 @@ class ArchRegisters:
 
 
 class Project:
-    # Constructing a Project registers it as the process-wide current project, so
-    # the rest of the engine can reach arch info (register names, word size) without
-    # threading a `project` argument through every constructor. Re-creating a Project
-    # (e.g. switching architectures between analyses) replaces the current one.
-    _current: "Project | None" = None
+    # At most one Project may exist at a time. Constructing one registers it as
+    # THE current project, so the rest of the engine can reach arch info
+    # (register names, word size) without threading a `project` argument through
+    # every constructor. To switch architectures you must drop all references to
+    # the live project first — its __del__ clears the slot. The slot is a
+    # weakref so it doesn't keep the project alive by itself (otherwise __del__
+    # could never run and a second Project could never be created).
+    _current: "weakref.ref[Project] | None" = None
 
     def __init__(self, language: str | pypcode.ArchLanguage):
+        if Project._live() is not None:
+            raise RuntimeError(
+                "A Project already exists; release it (it must be __del__'d) "
+                "before constructing another"
+            )
         self.context = pypcode.Context(language)
         self.arch_regs = Project._create_arch_registers(self.context)
-        Project._current = self
+        Project._current = weakref.ref(self)
+
+    def __del__(self):
+        # Free the slot once this project is collected so a new one can be made.
+        if Project._current is not None and Project._current() is self:
+            Project._current = None
+
+    @classmethod
+    def _live(cls) -> "Project | None":
+        return cls._current() if cls._current is not None else None
 
     @classmethod
     def current(cls) -> "Project":
-        if cls._current is None:
+        proj = cls._live()
+        if proj is None:
             raise RuntimeError("No Project has been constructed yet")
-        return cls._current
+        return proj
 
     @property
     def word_bits(self) -> int:

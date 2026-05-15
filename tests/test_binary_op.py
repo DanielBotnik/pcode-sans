@@ -1,5 +1,17 @@
+import pytest
+
 from engine_types import Arg, UnaryOp
 from pcode_engine import BinaryOp
+from project import Project
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _project():
+    # create_binop's numeric evaluation needs Project.current() for the word
+    # mask. These are pure-algebra tests with no binary, so supply a 32-bit one.
+    project = Project("MIPS:BE:32:default")
+    yield project
+    del project
 
 
 class TestCompressionBinaryOp:
