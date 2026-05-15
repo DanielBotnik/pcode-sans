@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Mapping, TypeAlias
+from typing import ClassVar, Mapping, TypeAlias
 import operator
 
 from project import Project
@@ -80,7 +80,7 @@ class BinaryOp:
     # Each comparison `a OP c` is the set of integers (lt-of-c, eq-c, gt-of-c)
     # included. Combining two comparisons on the same (a, c) under & or | is
     # then bitwise AND / OR of these tuples, mapped back to an operator.
-    _COMPARISON_SETS = {
+    _COMPARISON_SETS: ClassVar[dict[str, tuple[bool, bool, bool]]] = {
         "==": (False, True, False),
         "!=": (True, False, True),
         "<":  (True, False, False),
@@ -88,20 +88,20 @@ class BinaryOp:
         ">":  (False, False, True),
         ">=": (False, True, True),
     }
-    _SETS_TO_COMPARISON = {
+    _SETS_TO_COMPARISON: ClassVar[dict[tuple[bool, bool, bool], "str | int"]] = {
         **{v: k for k, v in _COMPARISON_SETS.items()},
         (False, False, False): 0,
         (True, True, True): 1,
     }
 
     @staticmethod
-    def _combine_comparisons(op1: str, op2: str, combiner: str):
+    def _combine_comparisons(op1: str, op2: str, combiner: str) -> "str | int":
         s1 = BinaryOp._COMPARISON_SETS[op1]
         s2 = BinaryOp._COMPARISON_SETS[op2]
         if combiner == "&":
-            combined = tuple(a and b for a, b in zip(s1, s2))
+            combined = (s1[0] and s2[0], s1[1] and s2[1], s1[2] and s2[2])
         else:  # "|"
-            combined = tuple(a or b for a, b in zip(s1, s2))
+            combined = (s1[0] or s2[0], s1[1] or s2[1], s1[2] or s2[2])
         return BinaryOp._SETS_TO_COMPARISON[combined]
 
     @staticmethod
@@ -184,7 +184,9 @@ def _negate_value(v):
 @dataclass(frozen=True)
 class ConditionalSite:
     addr: int
-    condition: BinaryOp
+    # Usually a comparison BinaryOp, but composite booleans (BOOL_AND/OR/!())
+    # and merged-state ConditionalExpressions can also drive a branch.
+    condition: "Value"
     iftrue: int
     iffalse: int
 

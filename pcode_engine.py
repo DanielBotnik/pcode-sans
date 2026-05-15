@@ -95,15 +95,23 @@ class _FakeVarnode:
         self.size = size
 
 
+def _opcode_id(opcode: pypcode.OpCode) -> int:
+    # pypcode's generated stub omits OpCode.value (and int()/__index__ raise at
+    # runtime), so the integer id is only reachable via the .value attribute.
+    return opcode.value  # type: ignore[attr-defined]
+
+
 @dataclass
 class _UnfinishedConditionalSite:
-    condition: BinaryOp
+    condition: Value
     goto_iftrue: int
 
 
 class Engine:
 
-    _BINARY_OP_SYMBOLS: ClassVar[dict[pypcode.OpCode, tuple[str, bool]]] = {
+    # Keyed by OpCode.value (int) — int hashing beats walking the enum name on
+    # every dispatch. Authored with OpCode keys and re-keyed in place; see _opcode_id.
+    _BINARY_OP_SYMBOLS: ClassVar[dict[int, tuple[str, bool]]] = {_opcode_id(_k): _v for _k, _v in {
         pypcode.OpCode.INT_ADD: ("+", False),
         pypcode.OpCode.INT_MULT: ("*", False),
         pypcode.OpCode.INT_LEFT: ("<<", False),
@@ -121,7 +129,7 @@ class Engine:
         pypcode.OpCode.BOOL_AND: ("&", False),
         pypcode.OpCode.BOOL_OR: ("|", False),
         pypcode.OpCode.BOOL_XOR: ("^", False),
-    }
+    }.items()}
 
     def __init__(self, bin_func: BinaryFunction):
         self.project = bin_func.project
@@ -181,7 +189,7 @@ class Engine:
         return self._return_values
 
     def _handle_binary_op(self, op: pypcode.PcodeOp):
-        op_symbol, signed = self._BINARY_OP_SYMBOLS[op.opcode.value]
+        op_symbol, signed = self._BINARY_OP_SYMBOLS[_opcode_id(op.opcode)]
         left = self.handle_get(op.inputs[0])
         right = self.handle_get(op.inputs[1])
         self.handle_put(op.output, BinaryOp.create_binop(left, right, op_symbol, signed))
@@ -192,7 +200,7 @@ class Engine:
 
         while current_address < blk.end:
             for op in self.bin_func.opcodes[current_address].ops:
-                Engine._OPCODE_HANDLERS[op.opcode.value](self, op)
+                Engine._OPCODE_HANDLERS[_opcode_id(op.opcode)](self, op)
             current_address += self.bin_func.opcodes[current_address].bytes_size
 
     def _get_block_and_state_from_mark(self, mark: int) -> tuple[FunctionBlock, InstructionState]:
@@ -361,7 +369,7 @@ class Engine:
         blk = self.bin_func.blocks_dict.get(addr)
         return blk is not None and blk.start in loop.blocks
 
-    def _create_condsite(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> ConditionalSite:
+    def _create_condsite(self, condition: Value, goto_iftrue: int, goto_iffalse: int) -> ConditionalSite:
         condsite = ConditionalSite(self.current_inst, condition, goto_iftrue, goto_iffalse)
         self.conditional_sites.append(condsite)
         if goto_iftrue != CBRANCH_SKIP_ADDR:
@@ -425,7 +433,7 @@ class Engine:
 
         self._create_condsite(condition, goto_iftrue, goto_iffalse)
 
-    def _defer_conditional_move(self, condition: BinaryOp, goto_iftrue: int, goto_iffalse: int) -> None:
+    def _defer_conditional_move(self, condition: Value, goto_iftrue: int, goto_iffalse: int) -> None:
         # Don't record the conditional site yet — an ARM MOVLS R0, R0 (or any
         # cmove with matching branches) leaves the register untouched and produces
         # no observable effect. The site is registered on first use in
@@ -449,9 +457,11 @@ class Engine:
         if isinstance(a, int) and isinstance(b, int):
             self.handle_put(op.output, 1 if (a + b) > mask else 0)
             return
-        if isinstance(b, int) or isinstance(a, int):
-            const, expr = (b, a) if isinstance(b, int) else (a, b)
-            self.handle_put(op.output, 0 if const == 0 else BinaryOp(expr, (-const) & mask, ">="))
+        if isinstance(b, int):
+            self.handle_put(op.output, 0 if b == 0 else BinaryOp(a, (-b) & mask, ">="))
+            return
+        if isinstance(a, int):
+            self.handle_put(op.output, 0 if a == 0 else BinaryOp(b, (-a) & mask, ">="))
             return
         # Symbolic both sides: ~a < b unsigned is equivalent.
         self.handle_put(op.output, BinaryOp(UnaryOp(a, "~"), b, "<"))
@@ -560,7 +570,9 @@ class Engine:
             return self._handle_get_register(input.offset)
         if name == "const" or name == "ram":
             return input.offset
-        return self.instructions_state[self.current_inst].unique.get(input.offset)
+        # unique: a slot whose producing op is a no-op for us (e.g. INT_SCARRY)
+        # is read back as None and propagates harmlessly downstream — match that.
+        return self.instructions_state[self.current_inst].unique.get(input.offset)  # type: ignore[return-value]
 
     def _consume_conditional_move(self) -> None:
         """Record a deferred conditional-move site once it has an observable effect."""
@@ -637,8 +649,9 @@ class Engine:
 
         return args
 
-    # Class-level dispatch tables. Methods referenced here must be defined above.
-    _OPCODE_HANDLERS: ClassVar[dict[pypcode.OpCode, Callable]] = {
+    # Class-level dispatch table. Methods referenced here must be defined above.
+    # Keyed by OpCode.value (int); authored with OpCode keys, re-keyed in place.
+    _OPCODE_HANDLERS: ClassVar[dict[int, Callable]] = {_opcode_id(_k): _v for _k, _v in {
         pypcode.OpCode.INT_ADD: _handle_binary_op,
         pypcode.OpCode.INT_MULT: _handle_binary_op,
         pypcode.OpCode.INT_LEFT: _handle_binary_op,
@@ -676,7 +689,7 @@ class Engine:
         pypcode.OpCode.INT_SEXT: _handle_int_sext,
         pypcode.OpCode.INT_ZEXT: _handle_int_zext,
         pypcode.OpCode.SUBPIECE: _handle_subpiece,
-    }
+    }.items()}
 
     _PUT_HANDLERS: ClassVar[dict[str, Callable]] = {
         "register": _handle_put_register,
@@ -689,10 +702,3 @@ class Engine:
         "unique": _handle_get_unique,
         "ram": _handle_get_const,
     }
-
-
-# Re-key the per-op dispatch tables by OpCode.value (int). IntEnum hashing
-# walks the enum's name string, which adds up over millions of dispatches in
-# longer analyses — int hashing is a no-op.
-Engine._OPCODE_HANDLERS = {k.value: v for k, v in Engine._OPCODE_HANDLERS.items()}
-Engine._BINARY_OP_SYMBOLS = {k.value: v for k, v in Engine._BINARY_OP_SYMBOLS.items()}
