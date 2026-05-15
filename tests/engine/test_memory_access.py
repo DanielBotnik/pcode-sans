@@ -12,7 +12,7 @@ class TestMemoryAccess:
         ADDR = 0x004CCF2C
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 1
@@ -35,7 +35,7 @@ class TestMemoryAccess:
         ADDR = 0x004A4EB8
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 1
@@ -53,7 +53,7 @@ class TestMemoryAccess:
         ADDR = 0x00479980
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 5
@@ -71,7 +71,7 @@ class TestMemoryAccess:
         ADDR = 0x00445BDC
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 2
@@ -85,7 +85,7 @@ class TestMemoryAccess:
         ADDR = 0x0053C444
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 1
@@ -104,12 +104,12 @@ class TestMemoryAccess:
         ADDR = 0x0044F01C
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 2
         assert MemoryAccess(0x0044F024, Arg(0), 0x10, MemoryAccessType.STORE, Arg(1)) in engine.memory_accesses
         assert (
-            MemoryAccess(0x0044F02C, Register(8, 0x0044F028, project), 4, MemoryAccessType.STORE, Arg(1))
+            MemoryAccess(0x0044F02C, Register(8, 0x0044F028), 4, MemoryAccessType.STORE, Arg(1))
             in engine.memory_accesses
         )

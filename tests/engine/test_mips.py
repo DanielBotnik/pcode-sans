@@ -28,7 +28,7 @@ class TestMIPSConditionalEarlyReturnWithCall:
 
     def test_conditional_site_guards_zero_path(self):
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.conditional_sites) == 1
@@ -41,7 +41,7 @@ class TestMIPSConditionalEarlyReturnWithCall:
         # BN_num_bits_word(*(a0[0] + 4 * (n - 1)))  where n = a0[1].
         # n - 1 is lifted as n + 0xFFFFFFFF (two's complement) then << 2.
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -56,7 +56,7 @@ class TestMIPSConditionalEarlyReturnWithCall:
 
     def test_return_values(self):
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         n = MemoryAccess(0x4797D8, Arg(0), 0x4, MemoryAccessType.LOAD)
@@ -81,7 +81,7 @@ class TestMIPSCallThenConditional:
 
     def test_single_callsite(self):
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert len(engine.callsites) == 1
         assert engine.callsites[0].target == self.CHECK_SANITY
@@ -89,7 +89,7 @@ class TestMIPSCallThenConditional:
     def test_conditional_on_call_result(self):
         # BNE on the callsite return value (sanity check failed -> return 0).
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.conditional_sites[0]
         assert isinstance(cs.condition, BinaryOp)
@@ -100,7 +100,7 @@ class TestMIPSCallThenConditional:
 
     def test_memory_accesses_and_return(self):
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         hi = MemoryAccess(0x428B40, Arg(0), 0xC, MemoryAccessType.LOAD)
@@ -122,7 +122,7 @@ class TestMIPSVarargs:
 
     def test_calls_do_log_with_level_2(self):
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -133,7 +133,7 @@ class TestMIPSVarargs:
 
     def test_va_list_pointer_is_stack_relative(self):
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[0]
         # arg2 is &va — a pointer into the spilled-register area on the stack.
@@ -159,14 +159,14 @@ class TestMIPSNestedLoop:
 
     def test_two_loops_detected(self):
         project = Project("MIPS:BE:32:default")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         # Inner loop at 0x562584, outer loop at 0x562574.
         assert set(bf.loops_dict_start_address.keys()) == {0x562584, 0x562574}
 
     def test_inner_loop_nested_in_outer(self):
         # The outer loop's block set contains the inner loop's blocks.
         project = Project("MIPS:BE:32:default")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         inner = bf.loops_dict_start_address[0x562584][0]
         outer = bf.loops_dict_start_address[0x562574][0]
         assert inner.blocks == {0x562584, 0x562590}
@@ -177,20 +177,20 @@ class TestMIPSNestedLoop:
         # Outer walks a0 (via v1), inner walks a1 (via a2). Both produce byte loads
         # using fresh loop-cleared base registers.
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         loads = [ma for ma in engine.memory_accesses if ma.access_type == MemoryAccessType.LOAD]
         assert len(loads) == 2
         # The outer-pointer byte and inner-pointer byte are compared at 0x562590.
-        v1 = Register(12, 0x562574, project)  # $v1
-        a2 = Register(24, 0x562584, project)  # $a2
+        v1 = Register(12, 0x562574)  # $v1
+        a2 = Register(24, 0x562584)  # $a2
         assert MemoryAccess(0x562574, v1, 0, MemoryAccessType.LOAD) in loads
         assert MemoryAccess(0x562584, a2, 0, MemoryAccessType.LOAD) in loads
 
     def test_exit_conditions(self):
         # Outer exits when *v1 == 0 (0x562578); inner exits when *a2 == 0 (0x562588).
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         outer = engine.loops_dict_start_address[0x562574][0]
@@ -200,7 +200,7 @@ class TestMIPSNestedLoop:
 
     def test_return_is_pointer_difference(self):
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # return v1 - a0, where v1 is the loop-advanced pointer.
         ret = next(iter(engine.return_values))

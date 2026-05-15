@@ -2,7 +2,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pypcode
-import ctypes
 
 from engine_types import (
     Arg,
@@ -20,7 +19,7 @@ from engine_types import (
 from typing import Callable, ClassVar, Optional
 from frozendict import frozendict
 from binary_function import BinaryFunction, CBRANCH_SKIP_ADDR, FunctionBlock
-from project import ArchRegisters
+from project import ArchRegisters, Project
 
 
 class InstructionState:
@@ -76,7 +75,7 @@ class InstructionState:
             if not isinstance(arg.left, Register) or not isinstance(arg.right, int):
                 continue
             if arg.left.offset == arch.stackpointer:
-                self.stack.pop(ctypes.c_int32(arg.right).value, None)
+                self.stack.pop(Project.current().to_signed(arg.right), None)
         for reg in list(self.regs.keys()):
             if reg not in arch.unaffected:
                 del self.regs[reg]
@@ -317,9 +316,9 @@ class Engine:
         if not isinstance(offset.left, Register) or offset.left.offset != self.project.arch_regs.stackpointer:
             return None
         if offset.op == "+":
-            return ctypes.c_int32(offset.right).value
+            return self.project.to_signed(offset.right)
         if offset.op == "-":
-            return -ctypes.c_int32(offset.right).value
+            return -self.project.to_signed(offset.right)
         return None
 
     def _handle_int_2comp(self, op: pypcode.PcodeOp):
@@ -440,18 +439,19 @@ class Engine:
         pass
 
     def _handle_int_carry(self, op: pypcode.PcodeOp):
-        # INT_CARRY(a, b) = 1 iff (a + b) overflows past 0xFFFFFFFF.
+        # INT_CARRY(a, b) = 1 iff (a + b) overflows past the word mask.
         # For constant b > 0: (a + b) > MAX ⟺ a >= (-b) & MAX. This direct
         # form lets later equality-with-zero and comparison-combining rules
         # produce clean conditions (e.g. ARM CMN-then-BHI lifts to `a > c`).
+        mask = self.project.word_mask
         a = self.handle_get(op.inputs[0])
         b = self.handle_get(op.inputs[1])
         if isinstance(a, int) and isinstance(b, int):
-            self.handle_put(op.output, 1 if (a + b) > 0xFFFFFFFF else 0)
+            self.handle_put(op.output, 1 if (a + b) > mask else 0)
             return
         if isinstance(b, int) or isinstance(a, int):
             const, expr = (b, a) if isinstance(b, int) else (a, b)
-            self.handle_put(op.output, 0 if const == 0 else BinaryOp(expr, (-const) & 0xFFFFFFFF, ">="))
+            self.handle_put(op.output, 0 if const == 0 else BinaryOp(expr, (-const) & mask, ">="))
             return
         # Symbolic both sides: ~a < b unsigned is equivalent.
         self.handle_put(op.output, BinaryOp(UnaryOp(a, "~"), b, "<"))
@@ -479,7 +479,7 @@ class Engine:
     def _handle_int_negate(self, op: pypcode.PcodeOp):
         int_expr = self.handle_get(op.inputs[0])
         if isinstance(int_expr, int):
-            self.handle_put(op.output, ~int_expr & 0xFFFFFFFF)
+            self.handle_put(op.output, ~int_expr & self.project.word_mask)
             return
         self.handle_put(op.output, UnaryOp(int_expr, "~"))
 
@@ -503,7 +503,7 @@ class Engine:
 
         sp_offset = self._extract_stack_offset(offset)
         if sp_offset is not None:
-            return self._resolve_stack_load(ctypes.c_uint32(sp_offset).value)
+            return self._resolve_stack_load(self.project.to_unsigned(sp_offset))
         return self._record_load(offset.left, offset.right)
 
     def _record_load(self, base: Value, offset: Value) -> MemoryAccess:
@@ -515,7 +515,7 @@ class Engine:
         assert isinstance(right, int)
         arch = self.project.arch_regs
         state = self.instructions_state[self.current_inst]
-        signed_value = ctypes.c_int32(right).value
+        signed_value = self.project.to_signed(right)
 
         if signed_value >= arch.stack_argument_offset:
             return Arg(signed_value // arch.pointer_size)
@@ -524,7 +524,7 @@ class Engine:
         if res is None:
             assert self._first_stack_access is not None
             res = MemoryAccess(
-                self.current_inst, self._first_stack_access, ctypes.c_uint32(right).value, MemoryAccessType.LOAD
+                self.current_inst, self._first_stack_access, self.project.to_unsigned(right), MemoryAccessType.LOAD
             )
             state.stack[signed_value] = res
         return res
@@ -541,7 +541,7 @@ class Engine:
         if offset in arch.rev_arguments and state.last_callsite is None and offset not in state.used_arguments:
             res = Arg(arch.rev_arguments[offset])
         else:
-            res = Register(offset, self.current_inst, self.project)
+            res = Register(offset, self.current_inst)
             if offset == arch.stackpointer and self._first_stack_access is None:
                 self._first_stack_access = res
 
@@ -615,7 +615,7 @@ class Engine:
             # If SP folded back to the entry-time Register (no offset), there are no
             # stack args. Only the BinaryOp(sp_reg, signed_offset, "+") form indicates
             # a frame where outgoing stack args may live.
-            stack_argument_offset = ctypes.c_int32(current_stack.right + arch.stack_argument_offset).value
+            stack_argument_offset = self.project.to_signed(current_stack.right + arch.stack_argument_offset)
             arg_num = len(arch.arguments)
 
             while stack_argument_offset in state.stack:

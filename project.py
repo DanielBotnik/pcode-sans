@@ -18,10 +18,38 @@ class ArchRegisters:
 
 
 class Project:
+    # Constructing a Project registers it as the process-wide current project, so
+    # the rest of the engine can reach arch info (register names, word size) without
+    # threading a `project` argument through every constructor. Re-creating a Project
+    # (e.g. switching architectures between analyses) replaces the current one.
+    _current: "Project | None" = None
 
     def __init__(self, language: str | pypcode.ArchLanguage):
         self.context = pypcode.Context(language)
         self.arch_regs = Project._create_arch_registers(self.context)
+        Project._current = self
+
+    @classmethod
+    def current(cls) -> "Project":
+        if cls._current is None:
+            raise RuntimeError("No Project has been constructed yet")
+        return cls._current
+
+    @property
+    def word_bits(self) -> int:
+        return self.arch_regs.pointer_size * 8
+
+    @property
+    def word_mask(self) -> int:
+        return (1 << self.word_bits) - 1
+
+    def to_signed(self, value: int) -> int:
+        bits = self.word_bits
+        value &= (1 << bits) - 1
+        return value - (1 << bits) if value & (1 << (bits - 1)) else value
+
+    def to_unsigned(self, value: int) -> int:
+        return value & self.word_mask
 
     @staticmethod
     def _create_arch_registers(context: pypcode.Context) -> ArchRegisters:

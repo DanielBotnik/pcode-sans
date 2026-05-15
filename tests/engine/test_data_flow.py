@@ -12,7 +12,7 @@ class TestDoubleDeref:
         ADDR = 0x00496400
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         outer_a0 = MemoryAccess(0x00496400, Arg(0), 0, MemoryAccessType.LOAD)
@@ -32,7 +32,7 @@ class TestDoubleDeref:
         ADDR = 0x00496400
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         outer_a0 = MemoryAccess(0x00496400, Arg(0), 0, MemoryAccessType.LOAD)
@@ -50,7 +50,7 @@ class TestTailCallWithConditional:
         ADDR = 0x00429708
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         deref_a0 = MemoryAccess(0x00429710, Arg(0), 0, MemoryAccessType.LOAD)
@@ -65,7 +65,7 @@ class TestTailCallWithConditional:
         ADDR = 0x00429708
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         deref_a0 = MemoryAccess(0x00429710, Arg(0), 0, MemoryAccessType.LOAD)
@@ -79,7 +79,7 @@ class TestTailCallWithConditional:
         ADDR = 0x00429708
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 1
@@ -91,7 +91,7 @@ class TestTailCallWithConditional:
         ADDR = 0x00429708
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.conditional_sites) == 1
@@ -111,12 +111,12 @@ class TestLoopWithByteLoads:
         ADDR = 0x004765E0
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.loops_dict_start_address) == 1
 
-        loop_counter = Register(12, 0x004765E8, project)  # $v1 cleared at loop header
+        loop_counter = Register(12, 0x004765E8)  # $v1 cleared at loop header
         expected_loop = Loop(
             start=0x004765E8,
             blocks={0x004765E8, 0x004765F0},
@@ -130,10 +130,10 @@ class TestLoopWithByteLoads:
         ADDR = 0x004765E0
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
-        loop_counter = Register(12, 0x004765E8, project)
+        loop_counter = Register(12, 0x004765E8)
 
         assert MemoryAccess(0x004765F8, Arg(1), loop_counter, MemoryAccessType.LOAD) in engine.memory_accesses
         assert MemoryAccess(0x004765FC, Arg(0), loop_counter, MemoryAccessType.LOAD) in engine.memory_accesses
@@ -144,11 +144,11 @@ class TestLoopWithByteLoads:
         ADDR = 0x004765E0
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         # $v0 is cleared at the loop header but not read there. The loop back-edge state is
         # filtered, so the exit block's entry state has no $v0. The first read of $v0 happens
         # at 0x476610 (the sltu delay slot), stamping the Register with that address.
-        or_accumulator = Register(8, 0x00476610, project)
+        or_accumulator = Register(8, 0x00476610)
         assert engine.return_values == {BinaryOp(0, or_accumulator, "<")}

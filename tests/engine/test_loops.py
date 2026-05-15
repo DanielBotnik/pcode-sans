@@ -13,10 +13,10 @@ class TestLoops:
         ADDR = 0x0043F92C
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
-        base = Register(8, 0x43F934, project)
+        base = Register(8, 0x43F934)
         expected_loop = Loop(
             start=0x43F934,
             blocks={0x0043F934, 0x0043F940, 0x0043F94C},
@@ -33,7 +33,7 @@ class TestLoops:
         ADDR = 0x0046FAF0
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.loops_dict_start_address) == 1
@@ -42,7 +42,7 @@ class TestLoops:
             start=0x0046FAF8,
             blocks={0x0046FAF8},
             exit_conditions={
-                0x0046FB14: BinaryOp(BinaryOp(Register(8, 0x0046FAF8, project), 4, "+"), 128, "=="),
+                0x0046FB14: BinaryOp(BinaryOp(Register(8, 0x0046FAF8), 4, "+"), 128, "=="),
             },
         )
 
@@ -54,7 +54,7 @@ class TestLoops:
         ADDR = 0x0046FAF0
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         blocks = list(bin_func.code_flow_graph.traverse())
         assert len(blocks) == len(set(blocks))
@@ -65,7 +65,7 @@ class TestLoops:
         ADDR = 0x00572EE0
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.loops_dict_start_address) == 2
@@ -74,9 +74,9 @@ class TestLoops:
             start=0x00572EE4,
             blocks={0x00572EE4, 0x00572EF0, 0x00572EFC},
             exit_conditions={
-                0x00572EE8: BinaryOp(BinaryOp(Register(16, 0x00572EE4, project), 3, "&"), 0, "=="),
+                0x00572EE8: BinaryOp(BinaryOp(Register(16, 0x00572EE4), 3, "&"), 0, "=="),
                 0x00572EF4: BinaryOp(
-                    MemoryAccess(0x00572EF0, Register(16, 0x00572EE4, project), 0, MemoryAccessType.LOAD),
+                    MemoryAccess(0x00572EF0, Register(16, 0x00572EE4), 0, MemoryAccessType.LOAD),
                     BinaryOp(Arg(1), 0xFF, "&"),
                     "==",
                 ),
@@ -85,13 +85,13 @@ class TestLoops:
 
         assert [single_loop] == engine.loops_dict_start_address[0x00572EE4]
 
-        a1 = Register(20, 0x572EE8, project)
+        a1 = Register(20, 0x572EE8)
         a1_lowbyte = BinaryOp(a1, 0xFF, "&")
         a1_shifted = BinaryOp(a1_lowbyte, 0x8, "<<")
         a1_ored = BinaryOp(a1_shifted, a1_lowbyte, "|")
         v3 = BinaryOp(BinaryOp(a1_ored, 0x10, "<<"), a1_ored, "|")
         v3_xor_a1 = BinaryOp(
-            v3, MemoryAccess(0x00572F28, Register(16, 0x00572F24, project), 0, MemoryAccessType.LOAD), "^"
+            v3, MemoryAccess(0x00572F28, Register(16, 0x00572F24), 0, MemoryAccessType.LOAD), "^"
         )
         full_expr = BinaryOp(
             BinaryOp(UnaryOp(v3_xor_a1, "~"), BinaryOp(v3_xor_a1, 0x7EFEFEFF, "+"), "^"),
@@ -106,7 +106,7 @@ class TestLoops:
         )
 
         right_side = BinaryOp(Arg(1), 0xFF, "&")
-        left_reg = Register(16, 0x00572F24, project)
+        left_reg = Register(16, 0x00572F24)
 
         loop2 = Loop(
             start=0x00572F24,
@@ -128,7 +128,7 @@ class TestLoops:
         ADDR = 0x0056FD60
 
         project = Project("MIPS:BE:32:default")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.loops_dict_start_address) == 4
@@ -138,10 +138,10 @@ class TestLoops:
             blocks={0x0056FD74, 0x0056FD80},
             exit_conditions={
                 0x0056FD78: BinaryOp(
-                    MemoryAccess(0x0056FD74, Register(16, 0x0056FD74, project), 0, MemoryAccessType.LOAD), 0, "=="
+                    MemoryAccess(0x0056FD74, Register(16, 0x0056FD74), 0, MemoryAccessType.LOAD), 0, "=="
                 ),
                 0x0056FD80: BinaryOp(
-                    MemoryAccess(0x0056FD74, Register(16, 0x0056FD74, project), 0, MemoryAccessType.LOAD),
+                    MemoryAccess(0x0056FD74, Register(16, 0x0056FD74), 0, MemoryAccessType.LOAD),
                     MemoryAccess(0x0056FD60, Arg(1), 0, MemoryAccessType.LOAD),
                     "==",
                 ),
@@ -150,21 +150,21 @@ class TestLoops:
 
         assert [first_loop] == engine.loops_dict_start_address[0x0056FD74]
 
-        t0_offset_1_access = MemoryAccess(0x0056FDF8, Register(32, 0x0056FDF8, project), 1, MemoryAccessType.LOAD)
+        t0_offset_1_access = MemoryAccess(0x0056FDF8, Register(32, 0x0056FDF8), 1, MemoryAccessType.LOAD)
         second_loop = Loop(
             start=0x0056FDEC,
             blocks={0x0056FDEC, 0x0056FDF4, 0x0056FE04, 0x0056FE0C},
             exit_conditions={
-                0x0056FDEC: BinaryOp(Register(28, 0x0056FDEC, project), 0, "=="),
+                0x0056FDEC: BinaryOp(Register(28, 0x0056FDEC), 0, "=="),
                 0x0056FDFC: BinaryOp(
-                    MemoryAccess(0x0056FDF4, Register(36, 0x0056FDF4, project), 1, MemoryAccessType.LOAD),
+                    MemoryAccess(0x0056FDF4, Register(36, 0x0056FDF4), 1, MemoryAccessType.LOAD),
                     t0_offset_1_access,
                     "!=",
                 ),
                 0x0056FE04: BinaryOp(t0_offset_1_access, 0, "=="),
                 0x0056FE14: BinaryOp(
-                    MemoryAccess(0x0056FE10, Register(36, 0x0056FDF4, project), 2, MemoryAccessType.LOAD),
-                    MemoryAccess(0x0056FE0C, Register(32, 0x0056FDF8, project), 2, MemoryAccessType.LOAD),
+                    MemoryAccess(0x0056FE10, Register(36, 0x0056FDF4), 2, MemoryAccessType.LOAD),
+                    MemoryAccess(0x0056FE0C, Register(32, 0x0056FDF8), 2, MemoryAccessType.LOAD),
                     "!=",
                 ),
             },
@@ -178,15 +178,15 @@ class TestLoops:
             start=0x0056FDA0,
             blocks={0x0056FDA0, 0x0056FDA8, 0x0056FDB0, 0x0056FDC4, 0x0056FDCC},
             exit_conditions={
-                0x0056FDA0: BinaryOp(Register(8, 0x0056FDA0, project), second_arg_deref, "=="),
-                0x0056FDA8: BinaryOp(Register(8, 0x0056FDA0, project), 0, "=="),
+                0x0056FDA0: BinaryOp(Register(8, 0x0056FDA0), second_arg_deref, "=="),
+                0x0056FDA8: BinaryOp(Register(8, 0x0056FDA0), 0, "=="),
                 0x0056FDB4: BinaryOp(
-                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0, project), 1, MemoryAccessType.LOAD),
+                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0), 1, MemoryAccessType.LOAD),
                     second_arg_deref,
                     "==",
                 ),
                 0x0056FDC4: BinaryOp(
-                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0, project), 1, MemoryAccessType.LOAD), 0, "=="
+                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0), 1, MemoryAccessType.LOAD), 0, "=="
                 ),
             },
         )
@@ -213,11 +213,11 @@ class TestLoops:
                 0x0056FDCC,
             },
             exit_conditions={
-                0x0056FDEC: BinaryOp(Register(28, 0x0056FDEC, project), 0, "=="),
+                0x0056FDEC: BinaryOp(Register(28, 0x0056FDEC), 0, "=="),
                 0x0056FE04: BinaryOp(t0_offset_1_access, 0, "=="),
-                0x0056FDA8: BinaryOp(Register(8, 0x0056FDA0, project), 0, "=="),
+                0x0056FDA8: BinaryOp(Register(8, 0x0056FDA0), 0, "=="),
                 0x0056FDC4: BinaryOp(
-                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0, project), 1, MemoryAccessType.LOAD), 0, "=="
+                    MemoryAccess(0x0056FDB0, Register(12, 0x0056FDA0), 1, MemoryAccessType.LOAD), 0, "=="
                 ),
                 0x0056FE1C: BinaryOp(
                     ConditionalExpression(
@@ -225,9 +225,9 @@ class TestLoops:
                         iftrue=ConditionalExpression(
                             condsite=get_condsite_by_addr(engine, 0x56FDDC),
                             iftrue=MemoryAccess(0x56FDD8, Arg(1), 2, MemoryAccessType.LOAD),
-                            iffalse=MemoryAccess(0x56FDF8, Register(32, 0x56FDF8, project), 1, MemoryAccessType.LOAD),
+                            iffalse=MemoryAccess(0x56FDF8, Register(32, 0x56FDF8), 1, MemoryAccessType.LOAD),
                         ),
-                        iffalse=MemoryAccess(0x56FE0C, Register(32, 0x56FDF8, project), 2, MemoryAccessType.LOAD),
+                        iffalse=MemoryAccess(0x56FE0C, Register(32, 0x56FDF8), 2, MemoryAccessType.LOAD),
                     ),
                     0,
                     "==",

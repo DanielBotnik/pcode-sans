@@ -34,11 +34,11 @@ class _VisitedState:
 
 class BinaryFunction:
 
-    def __init__(self, start: int, code: bytes, project: Project):
+    def __init__(self, start: int, code: bytes):
         self.start = start
         self.end = start + len(code)
         self.code = code
-        self.project = project
+        self.project = Project.current()
         self.opcodes: dict[int, AddressOpcodes] = dict()
 
         self.blocks_dict: dict[int, FunctionBlock] = {}

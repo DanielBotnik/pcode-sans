@@ -10,7 +10,7 @@ class TestBinaryFunctionMIPSEL:
         ADDR = 0x000009B4
 
         project = Project("MIPS:LE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         cfg = CodeFlowGraph()
         cfg.add_edges(0x000009B4, [0x000009E0, 0x00000A6C])
@@ -31,7 +31,7 @@ class TestBinaryFunctionMIPSEL:
         ADDR = 0x4
 
         project = Project("MIPS:LE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         cfg = CodeFlowGraph()
         cfg.add_edges(0x00000004, [0x000000D8, 0x000000E0])
@@ -44,7 +44,7 @@ class TestBinaryFunctionMIPSEL:
         ADDR = 0x104
 
         project = Project("MIPS:LE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         cfg = CodeFlowGraph()
         cfg.add_edges(0x00000104, [0x00000120, 0x00000128])
@@ -63,7 +63,7 @@ class TestBinaryFunctionMIPSEL:
         ADDR = 0x00000B10
 
         project = Project("MIPS:LE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         cfg = CodeFlowGraph()
         cfg.add_block(0x00000B10)
@@ -78,7 +78,7 @@ class TestBinaryFunctionMIPSBE:
         ADDR = 0x00403E7C
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         cfg = CodeFlowGraph()
         cfg.add_edges(0x00403E7C, [0x00403EAC, 0x00403EF8])
@@ -105,7 +105,7 @@ class TestBinaryFunctionMIPSBE:
         ADDR = 0x00403E6C
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         cfg = CodeFlowGraph()
         cfg.add_block(0x00403E6C)
@@ -123,7 +123,7 @@ class TestReturnBlocks:
         ADDR = 0x004DB630
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         assert len(bin_func.return_blocks) == 1
         assert ADDR in bin_func.return_blocks
@@ -133,7 +133,7 @@ class TestReturnBlocks:
         ADDR = 0x005061E8
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         assert len(bin_func.return_blocks) == 1
         assert 0x00506288 in bin_func.return_blocks
@@ -143,7 +143,7 @@ class TestReturnBlocks:
         ADDR = 0x005097C8
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         assert len(bin_func.return_blocks) == 1
         assert 0x00509980 in bin_func.return_blocks
@@ -153,7 +153,7 @@ class TestReturnBlocks:
         ADDR = 0x00482E10
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         assert len(bin_func.return_blocks) == 3
         assert 0x00482E7C in bin_func.return_blocks
@@ -166,7 +166,7 @@ class TestReturnBlocks:
         ADDR = 0x0048EFA8
 
         project = Project("MIPS:BE:32:default")
-        bin_func = BinaryFunction(ADDR, CODE, project)
+        bin_func = BinaryFunction(ADDR, CODE)
 
         assert len(bin_func.return_blocks) == 1
         assert ADDR in bin_func.return_blocks

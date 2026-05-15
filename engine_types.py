@@ -19,10 +19,9 @@ def repr_or_hexint(val: Value) -> str:
 class Register:
     offset: int
     address: int
-    project: Project
 
     def __repr__(self):
-        return f"{{{self.project.arch_regs.names[self.offset]}@{hex(self.address)}}}"
+        return f"{{{Project.current().arch_regs.names[self.offset]}@{hex(self.address)}}}"
 
 
 @dataclass(frozen=True)
@@ -54,13 +53,8 @@ class BinaryOp:
 
     @staticmethod
     def _eval_numeric_expression(left: int, right: int, op: str):
-        return BinaryOp._INTEGER_OPS[op](left, right) & BinaryOp._BITNESS_TO_MASK[BinaryOp._PTR_SIZE]
+        return BinaryOp._INTEGER_OPS[op](left, right) & Project.current().word_mask
 
-    _BITNESS_TO_MASK = {
-        32: 0xFFFFFFFF,
-        64: 0xFFFFFFFFFFFFFFFF,
-    }
-    _PTR_SIZE = 32
     _INTEGER_OPS = {
         "+": operator.add,
         "-": operator.sub,
@@ -136,11 +130,11 @@ class BinaryOp:
         if not (isinstance(left, BinaryOp) and isinstance(right, int)):
             return BinaryOp(left, right, op, signed)
 
-        # Treat - as + with the additive inverse: (x ± c1) ± c2 collapses to one + with a 32-bit combined offset.
+        # Treat - as + with the additive inverse: (x ± c1) ± c2 collapses to one + with a word-masked combined offset.
         if op in {"+", "-"} and left.op in {"+", "-"} and isinstance(left.right, int):
             c1 = left.right if left.op == "+" else -left.right
             c2 = right if op == "+" else -right
-            combined = (c1 + c2) & 0xFFFFFFFF
+            combined = (c1 + c2) & Project.current().word_mask
             return left.left if combined == 0 else BinaryOp(left.left, combined, "+")
         if left.op == op and op in BinaryOp._ASSOCIATIVE_OPS and isinstance(left.right, int):
             return BinaryOp(left.left, BinaryOp._eval_numeric_expression(left.right, right, op), op)
@@ -149,9 +143,9 @@ class BinaryOp:
         # Both - and ^ are zero exactly when their operands are equal — lift to comparison.
         if left.op in {"-", "^"} and right == 0 and op in {"==", "!="}:
             return BinaryOp(left.left, left.right, op)
-        # (a + c) ==/!= 0 ⟺ a ==/!= -c (mod 2^32) — pull the constant across the comparison.
+        # (a + c) ==/!= 0 ⟺ a ==/!= -c (mod 2^word) — pull the constant across the comparison.
         if left.op == "+" and right == 0 and op in {"==", "!="} and isinstance(left.right, int):
-            return BinaryOp(left.left, (-left.right) & 0xFFFFFFFF, op)
+            return BinaryOp(left.left, (-left.right) & Project.current().word_mask, op)
 
         return BinaryOp(left, right, op, signed)
 

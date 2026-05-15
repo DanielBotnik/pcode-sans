@@ -26,7 +26,7 @@ class TestARM:
         VALUE_EXTRACT_BUF = 0x0002D7B8
 
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -48,7 +48,7 @@ class TestARMConditionalTailCall:
 
     def test_callsites(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -57,7 +57,7 @@ class TestARMConditionalTailCall:
     def test_conditional_site(self):
         # BEQ at 0x35798 branches to the constant-return path; fall-through tail-calls
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.conditional_sites) == 1
@@ -70,7 +70,7 @@ class TestARMConditionalTailCall:
 
     def test_return_values(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         tail_call = CallSite(0x3579C, self.TAIL_CALL_TARGET, frozendict({0: Arg(0)}))
@@ -87,7 +87,7 @@ class TestARMMemoryAccess:
 
     def test_load_and_store(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         load = MemoryAccess(0x148A4, Arg(0), 0x170, MemoryAccessType.LOAD)
@@ -101,7 +101,7 @@ class TestARMMemoryAccess:
     def test_returns_arg0(self):
         # The function returns its first argument unchanged
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert engine.return_values == {Arg(0)}
@@ -118,7 +118,7 @@ class TestARMConditionalExecution:
 
     def test_movne_creates_conditional_site(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         # MOVNE R3, R2: the cbranch lifts to a "skip" with iftrue == iffalse == next addr
@@ -130,7 +130,7 @@ class TestARMConditionalExecution:
 
     def test_callsite_conditional_argument(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -147,7 +147,7 @@ class TestARMConditionalExecution:
         # ARM MOVNE produces a CBRANCH-to-next-instruction; this should NOT split the
         # block or create a phantom self-loop in the CFG.
         project = Project("ARM:LE:32:v7")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         assert len(bf.blocks_dict_start_address) == 1
         assert self.ADDR in bf.blocks_dict_start_address
 
@@ -164,7 +164,7 @@ class TestARMConditionalReturn:
     def test_bxne_lr_does_not_truncate_function(self):
         # The BXNE LR is a conditional return; iteration must continue past it.
         project = Project("ARM:LE:32:v7")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         blk = bf.blocks_dict_start_address[self.ADDR]
         # Without conditional-return handling the block would terminate at the BXNE (0x968e3).
         assert blk.end >= 0x968F8
@@ -172,7 +172,7 @@ class TestARMConditionalReturn:
     def test_loads_after_conditional_return_are_visible(self):
         # The LDM after the conditional return loads from *(v1 + 0x24) and *(v1 + 0x28).
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         v1 = MemoryAccess(0x968D0, Arg(0), 0x24, MemoryAccessType.LOAD)
@@ -186,7 +186,7 @@ class TestARMConditionalReturn:
     def test_conditional_sites_count(self):
         # 4 conditional ARM instructions: MOVNE, BXNE, MOVEQ, MOVNE
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert len(engine.conditional_sites) == 4
 
@@ -194,7 +194,7 @@ class TestARMConditionalReturn:
         # When the conditional return is not taken, the function returns either
         # *(v1 + 0x28) (MOVEQ path) or 0 (MOVNE path) depending on the second compare.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         v1 = MemoryAccess(0x968D0, Arg(0), 0x24, MemoryAccessType.LOAD)
@@ -218,7 +218,7 @@ class TestARMMultipleLoads:
 
     def test_callsite_args_from_arg0_struct(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -233,7 +233,7 @@ class TestARMMultipleLoads:
         # PUSH {R4, LR} stores callee-saves at sp+0 and sp+4. Those must NOT leak
         # into the callsite's args dict.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[0]
         assert set(cs.args.keys()) == {0, 1, 2, 3}
@@ -241,7 +241,7 @@ class TestARMMultipleLoads:
     def test_stores_return_value_to_struct(self):
         # STR R0, [R4, #0x10] stores the call's return value at a0[4]
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         store = next(ma for ma in engine.memory_accesses if ma.access_type == MemoryAccessType.STORE)
@@ -266,7 +266,7 @@ class TestARMConditionalCallChain:
 
     def test_three_callsites_in_order(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 3
@@ -276,14 +276,14 @@ class TestARMConditionalCallChain:
 
     def test_strlen_called_with_arg0(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert engine.callsites[0].args[0] == Arg(0)
 
     def test_malloc_argument_is_strlen_plus_one(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         strlen_call = engine.callsites[0]
@@ -294,7 +294,7 @@ class TestARMConditionalCallChain:
         # MOVEQ R0, R3 is a no-op (SUBS R3, R0, #0 sets R3 = R0, so MOVEQ R0, R3
         # is "R0 = R0 if EQ" — observably nothing) and is dropped. Three remain.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.conditional_sites) == 3
@@ -312,7 +312,7 @@ class TestARMStackSpill:
         # Despite PUSH/STR/LDR/POP, the only "real" memory access is the *(a0+4) deref.
         # Everything else is on the stack and should be tracked there, not in memory_accesses.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.memory_accesses) == 1
@@ -320,7 +320,7 @@ class TestARMStackSpill:
 
     def test_free_called_with_loaded_pointer(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -333,7 +333,7 @@ class TestARMStackSpill:
         # STR R0, [R11, #-4] spills arg0 to a stack slot. Verify the engine tracks this
         # in instructions_state, not as a memory access.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         # The STR is at 0x32944; the value Arg(0) should be stored somewhere on the stack.
@@ -356,7 +356,7 @@ class TestARMLoopWithByteLoad:
 
     def test_loop_detected(self):
         project = Project("ARM:LE:32:v7")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         assert len(bf.loops_dict_start_address) == 1
         assert 0x455E4 in bf.loops_dict_start_address
 
@@ -364,7 +364,7 @@ class TestARMLoopWithByteLoad:
         # The body has two EORNE (ARM conditional execution); those must NOT show up
         # as loop exit conditions. Only the BNE at the loop tail (0x455ec) is a real exit.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         loop = engine.loops_dict_start_address[0x455E4][0]
@@ -375,17 +375,17 @@ class TestARMLoopWithByteLoad:
         # The Register stamp should be at the loop header (0x455e4), where the engine
         # first reads R3 after clearing it for loop analysis.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
-        loop_counter = Register(0x2C, 0x455E4, project)  # R3 offset = 0x2c
+        loop_counter = Register(0x2C, 0x455E4)  # R3 offset = 0x2c
         assert MemoryAccess(0x455E4, Arg(0), loop_counter, MemoryAccessType.LOAD) in engine.memory_accesses
 
     def test_conditional_execution_in_loop_body(self):
         # 2 EORNE instructions create 2 conditional sites inside the loop body.
         # Plus the BNE at the loop tail = 3 total.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert len(engine.conditional_sites) == 3
 
@@ -402,13 +402,13 @@ class TestARMBitManipulation:
         # All STR/LDR are stack-frame spill/reload through R11. The engine should
         # resolve them all into stack slots, leaving no real memory accesses.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert engine.memory_accesses == []
 
     def test_return_value_is_sign_extension_expression(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         # Build the expected expression bottom-up:
@@ -436,7 +436,7 @@ class TestARMGlobalConditionalInit:
 
     def test_conditional_site_guards_init(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # The BNE at 0x2e9f4 checks "is the global already initialised?" and skips the init.
         assert len(engine.conditional_sites) == 1
@@ -447,7 +447,7 @@ class TestARMGlobalConditionalInit:
 
     def test_init_callsite(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -458,7 +458,7 @@ class TestARMGlobalConditionalInit:
 
     def test_global_store_writes_node_pointer(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         # *(*(NODEP_LITERAL)) = *(NODE_LITERAL)
@@ -469,7 +469,7 @@ class TestARMGlobalConditionalInit:
 
     def test_returns_global_pointer_value(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         # Final return: deref the literal pool to get &nodep_3071, then deref that to read its value.
@@ -487,7 +487,7 @@ class TestARMTwoCallsWithStackReload:
 
     def test_two_callsites_to_correct_targets(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 2
@@ -497,7 +497,7 @@ class TestARMTwoCallsWithStackReload:
     def test_first_argument_of_both_calls_is_arg1(self):
         # R0 is reloaded from the stack-spilled arg1 before each call.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert engine.callsites[0].args[0] == Arg(1)
@@ -505,14 +505,14 @@ class TestARMTwoCallsWithStackReload:
 
     def test_returns_one(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert engine.return_values == {1}
 
     def test_no_real_memory_accesses(self):
         # Everything is stack-resolved; no actual memory_accesses should remain.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert engine.memory_accesses == []
 
@@ -528,7 +528,7 @@ class TestARMCompositeBoolean:
         # Before the fix, BOOL_NEGATE on a BOOL_AND result raised
         # "Cannot negate binary operation with operator '&'".
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # Should reach this point and have a meaningful analysis.
         assert len(engine.callsites) >= 1
@@ -539,7 +539,7 @@ class TestARMCompositeBoolean:
         # register is unchanged regardless of the condition. The ConditionalExpression
         # wrapper must collapse to the plain value.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         r0_offset = project.arch_regs.arguments[0]
         assert engine.instructions_state[0x9C8C4].regs[r0_offset] == Arg(0)
@@ -548,7 +548,7 @@ class TestARMCompositeBoolean:
         # The deferred conditional-move site at MOVLS R0, R0 has no observable
         # effect, so it should never reach conditional_sites — the only site is BHI.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert len(engine.conditional_sites) == 1
         assert engine.conditional_sites[0].addr == 0x9C8C8  # BHI, not MOVLS at 0x9c8c4
@@ -559,7 +559,7 @@ class TestARMCompositeBoolean:
         # against the constant and combine with the not-equal check to produce the
         # same comparison.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         bhi = next(cs for cs in engine.conditional_sites if cs.addr == 0x9C8C8)
         assert bhi.condition == BinaryOp(Arg(0), 0xFFFFF000, ">")
@@ -567,7 +567,7 @@ class TestARMCompositeBoolean:
     def test_two_return_paths(self):
         # Normal: syscall result. Error: -1 (lifted as ~0 → evaluated to 0xFFFFFFFF).
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # MOV R0, #0xFFFFFFFF lifts as INT_NEGATE(0), which the engine evaluates to 0xFFFFFFFF.
         assert 0xFFFFFFFF in engine.return_values
@@ -585,7 +585,7 @@ class TestARMPointerArithmeticCall:
 
     def test_first_call_is_type_init_common(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[0]
         assert cs.target == self.TYPE_INIT_COMMON
@@ -595,7 +595,7 @@ class TestARMPointerArithmeticCall:
     def test_tail_call_uses_offset_pointer(self):
         # vect_init's first arg is a0+4 (computed by ADD R3, R3, #4 after stack reload).
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[1]
         assert cs.target == self.VECT_INIT
@@ -604,7 +604,7 @@ class TestARMPointerArithmeticCall:
 
     def test_returns_tail_call(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # The function returns the result of vect_init (tail call)
         ret = next(iter(engine.return_values))
@@ -621,7 +621,7 @@ class TestARMBooleanReturn:
 
     def test_loads_both_struct_fields(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert MemoryAccess(0xE97C, Arg(1), 0x4, MemoryAccessType.LOAD) in engine.memory_accesses
         assert MemoryAccess(0xE984, Arg(2), 0, MemoryAccessType.LOAD) in engine.memory_accesses
@@ -629,7 +629,7 @@ class TestARMBooleanReturn:
     def test_two_conditional_moves_create_two_sites(self):
         # MOVEQ R3, #0 followed by MOVNE R3, #1 on the same CMP
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert len(engine.conditional_sites) == 2
 
@@ -639,7 +639,7 @@ class TestARMBooleanReturn:
         # value from MOVEQ's NE branch is unreachable in practice but appears here
         # because the engine doesn't reason about inverse-condition correlation.)
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert 0 in engine.return_values
         assert 1 in engine.return_values
@@ -655,14 +655,14 @@ class TestARMLinkedListLoop:
 
     def test_loop_detected(self):
         project = Project("ARM:LE:32:v7")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         assert len(bf.loops_dict_start_address) == 1
         loop = bf.loops_dict_start_address[0x96C8][0]
         assert loop.blocks == {0x96C8, 0x96BC}
 
     def test_loop_exit_condition_at_bne(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         loop = engine.loops_dict_start_address[0x96C8][0]
@@ -676,7 +676,7 @@ class TestARMLinkedListLoop:
 
     def test_conditional_site_at_loop_tail(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # Just one conditional site: the BNE at 0x96d4 driving the loop back-edge
         assert len(engine.conditional_sites) == 1
@@ -698,7 +698,7 @@ class TestARMIfElseConstants:
         # ARM CMP lifts as INT_SUB, but the (a - b) != 0 result should be simplified
         # to a != b before reaching the conditional site.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         loaded = MemoryAccess(0x13C2C, Arg(0), 0x4, MemoryAccessType.LOAD)
@@ -706,7 +706,7 @@ class TestARMIfElseConstants:
 
     def test_returns_both_constants(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert engine.return_values == {0, 2}
 
@@ -724,7 +724,7 @@ class TestARMConditionalChainOfCalls:
 
     def test_three_callsites_in_order(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert [cs.target for cs in engine.callsites] == [
             self.ARCH_DESTROY,
@@ -736,7 +736,7 @@ class TestARMConditionalChainOfCalls:
         # Each call reloads R0 from the spilled arg0 — verifies the stack-spill
         # tracking survives across the BLs (clear_after_callsite drops R0 each time).
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         for cs in engine.callsites:
             assert cs.args[0] == Arg(0)
@@ -744,13 +744,13 @@ class TestARMConditionalChainOfCalls:
     def test_null_path_returns_arg0(self):
         # If arg0 == 0, the function returns arg0 (which is 0) without calls.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert Arg(0) in engine.return_values
 
     def test_non_null_path_returns_tail_call(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # One of the return values is the private_destroy callsite (tail call)
         tail_calls = [r for r in engine.return_values if isinstance(r, CallSite) and r.target == self.PRIVATE_DESTROY]
@@ -758,7 +758,7 @@ class TestARMConditionalChainOfCalls:
 
     def test_guard_condition(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert len(engine.conditional_sites) == 1
         cs = engine.conditional_sites[0]
@@ -777,13 +777,13 @@ class TestARMNoReturn:
 
     def test_analyses_without_crashing(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert len(engine.callsites) == 2
 
     def test_call_targets_and_args(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert engine.callsites[0].target == self.CANCEL_HANDLER
         assert engine.callsites[0].args[0] == 0
@@ -794,7 +794,7 @@ class TestARMNoReturn:
         # Even though __Unwind_Resume doesn't return, the engine still treats the
         # final BL as a tail-call return for the caller's analysis.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         rets = list(engine.return_values)
         assert len(rets) == 1
@@ -811,7 +811,7 @@ class TestARMDivModHelper:
     def test_analyses_without_crashing_on_bool_xor(self):
         # Before BOOL_XOR was added to the dispatch table, this crashed.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # __divdi3 callsite is captured
         assert any(cs.target == 0x3C4A4 for cs in engine.callsites)
@@ -838,7 +838,7 @@ class TestARMConditionalExpressionInCondition:
         CODE = TestARMCompositeBoolean.CODE
         ADDR = TestARMCompositeBoolean.ADDR
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(ADDR, CODE, project))
+        engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
         # Just verify the conditional analysis still works at all
         assert len(engine.conditional_sites) > 0
@@ -854,7 +854,7 @@ class TestARMConditionalBitSet:
 
     def test_guarded_load_and_or_store(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         load = MemoryAccess(0x14870, Arg(0), 0x170, MemoryAccessType.LOAD)
@@ -865,13 +865,13 @@ class TestARMConditionalBitSet:
     def test_condition_is_arg1_neq_one(self):
         # BNE on (a1 == 1) — the engine simplifies (a1 - 1) != 0 to a1 != 1
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert engine.conditional_sites[0].condition == BinaryOp(Arg(1), 1, "!=")
 
     def test_returns_zero_unconditionally(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         assert engine.return_values == {0}
 
@@ -887,7 +887,7 @@ class TestARMVariadicCall:
 
     def test_callsite_has_five_arguments(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[0]
         assert cs.target == self.DO_REPORT
@@ -896,7 +896,7 @@ class TestARMVariadicCall:
 
     def test_first_three_register_args(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[0]
         assert cs.args[0] == 0
@@ -908,7 +908,7 @@ class TestARMVariadicCall:
         # The 5th arg is the address &varg_r1 — a pointer to the saved varargs area
         # on the stack. After my (a - b) folding it should be sp + (negative const).
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[0]
         # arg[4] is a BinaryOp of (sp_register + some constant)
@@ -931,7 +931,7 @@ class TestARMDjb2HashLoop:
     def test_loop_structure(self):
         # Two-block loop: header (0x1fdc0) tests the byte; body (0x1fd94) folds it in.
         project = Project("ARM:LE:32:v7")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         assert len(bf.loops_dict_start_address) == 1
         loop = bf.loops_dict_start_address[0x1FDC0][0]
         assert loop.blocks == {0x1FD94, 0x1FDC0}
@@ -940,7 +940,7 @@ class TestARMDjb2HashLoop:
         # `BNE loc_1FD94` keeps looping while the current byte is non-zero; the
         # exit condition is the byte == 0.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         loop = engine.loops_dict_start_address[0x1FDC0][0]
         assert set(loop.exit_conditions.keys()) == {0x1FDCC}
@@ -956,7 +956,7 @@ class TestARMDjb2HashLoop:
         # header — represented as the same expression because the stack-tracked
         # induction variable is not modeled across iterations.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         outer_load = MemoryAccess(0x1FD88, Arg(0), 0, MemoryAccessType.LOAD)
@@ -978,7 +978,7 @@ class TestARMLoopWithCallInside:
 
     def test_loop_calls_strchr_in_body(self):
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
 
         assert len(engine.callsites) == 1
@@ -990,7 +990,7 @@ class TestARMLoopWithCallInside:
     def test_loop_detected(self):
         # Two-block loop: 0x616cc (post-increment + byte check) and 0x616dc (call).
         project = Project("ARM:LE:32:v7")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         assert len(bf.loops_dict_start_address) == 1
         loop = next(iter(bf.loops_dict_start_address.values()))[0]
         assert {0x616CC, 0x616DC} <= loop.blocks
@@ -999,7 +999,7 @@ class TestARMLoopWithCallInside:
         # Loop has two exits: (1) byte at advanced index is NUL, (2) strchr returns
         # non-NULL (i.e., we found a forbidden byte).
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         loop = next(iter(engine.loops_dict_start_address.values()))[0]
         # Two BEQs inside the loop drive both exits
@@ -1008,10 +1008,10 @@ class TestARMLoopWithCallInside:
     def test_byte_load_uses_loop_counter(self):
         # The body loads *(arg0 + (R4 + 1)) where R4 is the loop-cleared counter.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # Expect a byte load that depends on the loop-cleared R4 register
-        loop_counter = Register(0x30, 0x616CC, project)  # R4 offset = 0x30
+        loop_counter = Register(0x30, 0x616CC)  # R4 offset = 0x30
         offset_expr = BinaryOp(loop_counter, 1, "+")
         assert MemoryAccess(0x616D0, Arg(0), offset_expr, MemoryAccessType.LOAD) in engine.memory_accesses
 
@@ -1021,10 +1021,10 @@ class TestARMLoopWithCallInside:
         # as a fresh Register stamp at the header rather than tracking the byte
         # load across iterations — verifies the loop-invariant clearing behavior.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         cs = engine.callsites[0]
-        assert cs.args[1] == Register(0x2C, 0x616DC, project)  # R3 offset = 0x2c
+        assert cs.args[1] == Register(0x2C, 0x616DC)  # R3 offset = 0x2c
 
 
 class TestARMBlockStoreLoop:
@@ -1042,7 +1042,7 @@ class TestARMBlockStoreLoop:
         # composite '&' condition that condition.negate() couldn't invert when
         # the loop machinery asked for the exit-condition shape.
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         # Loop body has 4 unrolled stores at +0, +4, +8, +12 from the pointer.
         store_count = sum(1 for ma in engine.memory_accesses
@@ -1052,7 +1052,7 @@ class TestARMBlockStoreLoop:
     def test_loop_has_one_block(self):
         # Single-block do/while: tail of body has the back-edge.
         project = Project("ARM:LE:32:v7")
-        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        bf = BinaryFunction(self.ADDR, self.CODE)
         assert len(bf.loops_dict_start_address) == 1
         loop = bf.loops_dict_start_address[0x643BC][0]
         assert loop.blocks == {0x643BC}
@@ -1060,7 +1060,7 @@ class TestARMBlockStoreLoop:
     def test_stored_value_is_fill_word(self):
         # Every store inside the loop writes the fill word (arg1).
         project = Project("ARM:LE:32:v7")
-        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE))
         engine.analyze()
         loop_stores = [
             ma for ma in engine.memory_accesses
