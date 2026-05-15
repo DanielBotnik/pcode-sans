@@ -155,19 +155,36 @@ class BinaryOp:
 
         return BinaryOp(left, right, op, signed)
 
-    def negate(self) -> "BinaryOp":
-        neg_op_map = {
-            "==": "!=",
-            "!=": "==",
-            "<": ">=",
-            "<=": ">",
-            ">": "<=",
-            ">=": "<",
-        }
-        if self.op not in neg_op_map:
-            raise ValueError(f"Cannot negate binary operation with operator '{self.op}'")
+    _NEG_OP_MAP = {
+        "==": "!=", "!=": "==",
+        "<": ">=", "<=": ">",
+        ">": "<=", ">=": "<",
+    }
 
-        return BinaryOp(self.left, self.right, neg_op_map[self.op])
+    def negate(self) -> "BinaryOp":
+        if self.op in BinaryOp._NEG_OP_MAP:
+            return BinaryOp(self.left, self.right, BinaryOp._NEG_OP_MAP[self.op])
+        if self.op == "&":
+            # De Morgan: !(a & b) = !a | !b
+            return BinaryOp(_negate_value(self.left), _negate_value(self.right), "|")
+        if self.op == "|":
+            # De Morgan: !(a | b) = !a & !b
+            return BinaryOp(_negate_value(self.left), _negate_value(self.right), "&")
+        raise ValueError(f"Cannot negate binary operation with operator '{self.op}'")
+
+
+def _negate_value(v):
+    """Logical negation of a boolean-typed Value (for use inside De Morgan)."""
+    if isinstance(v, int):
+        return 1 if v == 0 else 0
+    if isinstance(v, BinaryOp):
+        try:
+            return v.negate()
+        except ValueError:
+            return UnaryOp(v, "!")
+    if isinstance(v, UnaryOp) and v.op == "!":
+        return v.obj  # !(!x) = x
+    return UnaryOp(v, "!")
 
 
 @dataclass(frozen=True)

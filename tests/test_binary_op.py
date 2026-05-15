@@ -1,4 +1,4 @@
-from engine_types import Arg
+from engine_types import Arg, UnaryOp
 from pcode_engine import BinaryOp
 
 
@@ -191,3 +191,47 @@ class TestBitwiseBinaryOp:
     def test_associative_bitwise_operations(self):
         assert BinaryOp(Arg(0), 2, "&") == BinaryOp.create_binop(BinaryOp(Arg(0), 3, "&"), 2, "&")
         assert BinaryOp(Arg(0), 7, "|") == BinaryOp.create_binop(BinaryOp(Arg(0), 3, "|"), 4, "|")
+
+
+class TestNegateDeMorgan:
+    def test_negate_comparison_uses_map(self):
+        # Sanity: comparison ops invert via the existing direct map.
+        assert BinaryOp(Arg(0), 5, "!=") == BinaryOp(Arg(0), 5, "==").negate()
+        assert BinaryOp(Arg(0), 5, ">") == BinaryOp(Arg(0), 5, "<=").negate()
+
+    def test_negate_and_yields_or_via_de_morgan(self):
+        # !(a & b) = !a | !b — both operands negate individually.
+        inner = BinaryOp(BinaryOp(Arg(0), 0, "=="), BinaryOp(Arg(1), 0, "!="), "&")
+        assert inner.negate() == BinaryOp(
+            BinaryOp(Arg(0), 0, "!="),
+            BinaryOp(Arg(1), 0, "=="),
+            "|",
+        )
+
+    def test_negate_or_yields_and_via_de_morgan(self):
+        # !(a | b) = !a & !b
+        inner = BinaryOp(BinaryOp(Arg(0), 0, "<"), BinaryOp(Arg(1), 0, ">"), "|")
+        assert inner.negate() == BinaryOp(
+            BinaryOp(Arg(0), 0, ">="),
+            BinaryOp(Arg(1), 0, "<="),
+            "&",
+        )
+
+    def test_negate_non_boolean_atom_wraps_in_not_unary(self):
+        # An & operand that isn't a comparison or & / | (e.g. a raw Arg) wraps in
+        # UnaryOp("!", ...). Verifies the _negate_value fallback path.
+        inner = BinaryOp(Arg(0), BinaryOp(Arg(1), 0, "=="), "&")
+        assert inner.negate() == BinaryOp(
+            UnaryOp(Arg(0), "!"),
+            BinaryOp(Arg(1), 0, "!="),
+            "|",
+        )
+
+    def test_double_negation_cancels(self):
+        # !(!x & y) — when negating into De Morgan, the inner !x becomes x.
+        inner = BinaryOp(UnaryOp(Arg(0), "!"), BinaryOp(Arg(1), 0, "=="), "|")
+        assert inner.negate() == BinaryOp(
+            Arg(0),
+            BinaryOp(Arg(1), 0, "!="),
+            "&",
+        )

@@ -916,3 +916,156 @@ class TestARMVariadicCall:
         assert cs.args[4].op == "+"
         assert isinstance(cs.args[4].left, Register)
         assert isinstance(cs.args[4].right, int)
+
+
+class TestARMDjb2HashLoop:
+    # ltrace binary `dict_hash_string`:
+    #   v3 = 5381;
+    #   for (i = *a0; *i; ++i) v3 = (33 * v3) ^ *i;
+    #   return v3;
+    # Both the hash accumulator and the pointer are stack-spilled (var_8 = hash,
+    # var_C = pointer), so each iteration is LDR-modify-STR through R11.
+    CODE = b"\x04\xb0\x2d\xe5\x00\xb0\x8d\xe2\x14\xd0\x4d\xe2\x10\x00\x0b\xe5\x60\x30\x9f\xe5\x08\x30\x0b\xe5\x10\x30\x1b\xe5\x00\x30\x93\xe5\x0c\x30\x0b\xe5\x0a\x00\x00\xea\x08\x20\x1b\xe5\x02\x30\xa0\xe1\x83\x32\xa0\xe1\x02\x20\x83\xe0\x0c\x30\x1b\xe5\x00\x30\xd3\xe5\x03\x30\x22\xe0\x08\x30\x0b\xe5\x0c\x30\x1b\xe5\x01\x30\x83\xe2\x0c\x30\x0b\xe5\x0c\x30\x1b\xe5\x00\x30\xd3\xe5\x00\x00\x53\xe3\xf0\xff\xff\x1a\x08\x30\x1b\xe5\x03\x00\xa0\xe1\x00\xd0\x8b\xe2\x00\x08\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x1FD6C
+
+    def test_loop_structure(self):
+        # Two-block loop: header (0x1fdc0) tests the byte; body (0x1fd94) folds it in.
+        project = Project("ARM:LE:32:v7")
+        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        assert len(bf.loops_dict_start_address) == 1
+        loop = bf.loops_dict_start_address[0x1FDC0][0]
+        assert loop.blocks == {0x1FD94, 0x1FDC0}
+
+    def test_loop_exit_at_bne(self):
+        # `BNE loc_1FD94` keeps looping while the current byte is non-zero; the
+        # exit condition is the byte == 0.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        loop = engine.loops_dict_start_address[0x1FDC0][0]
+        assert set(loop.exit_conditions.keys()) == {0x1FDCC}
+        exit_cond = loop.exit_conditions[0x1FDCC]
+        # Compares the loaded byte to 0
+        assert isinstance(exit_cond, BinaryOp)
+        assert exit_cond.op == "=="
+        assert exit_cond.right == 0
+
+    def test_loop_dereferences_string_pointer(self):
+        # The loop loads bytes from *(*arg0). The outer-most pointer load is the
+        # initial *arg0; subsequent loads use the pointer as it stands at the loop
+        # header — represented as the same expression because the stack-tracked
+        # induction variable is not modeled across iterations.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        outer_load = MemoryAccess(0x1FD88, Arg(0), 0, MemoryAccessType.LOAD)
+        # Body / header both dereference the saved pointer
+        byte_loads = [ma for ma in engine.memory_accesses
+                      if ma.access_type == MemoryAccessType.LOAD and ma.base == outer_load]
+        assert len(byte_loads) >= 2
+
+
+class TestARMLoopWithCallInside:
+    # ltrace binary `strcspn`:
+    #   while (a0[i] && strchr(a1, a0[i]) == NULL) ++i;
+    #   return i;
+    # Two-block loop where the body calls another function — exercises the
+    # caller-save register clearing after the call inside the loop.
+    CODE = b"\x70\x40\x2d\xe9\x00\x30\xd0\xe5\x00\x00\x53\xe3\x00\x50\xa0\xe1\x01\x60\xa0\xe1\x03\x40\xa0\x01\x0a\x00\x00\x0a\x00\x40\xa0\xe3\x03\x00\x00\xea\x01\x40\x84\xe2\x04\x30\xd5\xe7\x00\x00\x53\xe3\x04\x00\x00\x0a\x03\x10\xa0\xe1\x06\x00\xa0\xe1\x98\xff\xff\xeb\x00\x00\x50\xe3\xf6\xff\xff\x0a\x04\x00\xa0\xe1\x70\x40\xbd\xe8\x1e\xff\x2f\xe1"
+    ADDR = 0x616A8
+    STRCHR = 0x6154C
+
+    def test_loop_calls_strchr_in_body(self):
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+
+        assert len(engine.callsites) == 1
+        cs = engine.callsites[0]
+        assert cs.target == self.STRCHR
+        # The first arg is the haystack (arg1), preserved across the loop iterations.
+        assert cs.args[0] == Arg(1)
+
+    def test_loop_detected(self):
+        # Two-block loop: 0x616cc (post-increment + byte check) and 0x616dc (call).
+        project = Project("ARM:LE:32:v7")
+        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        assert len(bf.loops_dict_start_address) == 1
+        loop = next(iter(bf.loops_dict_start_address.values()))[0]
+        assert {0x616CC, 0x616DC} <= loop.blocks
+
+    def test_two_exit_conditions(self):
+        # Loop has two exits: (1) byte at advanced index is NUL, (2) strchr returns
+        # non-NULL (i.e., we found a forbidden byte).
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        loop = next(iter(engine.loops_dict_start_address.values()))[0]
+        # Two BEQs inside the loop drive both exits
+        assert len(loop.exit_conditions) == 2
+
+    def test_byte_load_uses_loop_counter(self):
+        # The body loads *(arg0 + (R4 + 1)) where R4 is the loop-cleared counter.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # Expect a byte load that depends on the loop-cleared R4 register
+        loop_counter = Register(0x30, 0x616CC, project)  # R4 offset = 0x30
+        offset_expr = BinaryOp(loop_counter, 1, "+")
+        assert MemoryAccess(0x616D0, Arg(0), offset_expr, MemoryAccessType.LOAD) in engine.memory_accesses
+
+    def test_call_arg_is_loop_cleared_register(self):
+        # strchr's second argument is the byte loaded in the body, but the engine
+        # clears loop-written registers at the loop header (0x616dc). So R3 reads
+        # as a fresh Register stamp at the header rather than tracking the byte
+        # load across iterations — verifies the loop-invariant clearing behavior.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        cs = engine.callsites[0]
+        assert cs.args[1] == Register(0x2C, 0x616DC, project)  # R3 offset = 0x2c
+
+
+class TestARMBlockStoreLoop:
+    # ltrace binary `wmemset`: fills 4-word chunks via a do/while loop with unrolled
+    # body, then handles the tail.  Used here as a smoke test for:
+    #   - INT_CARRY on CMP-driven flags (we don't lift it; CY stays a Register)
+    #   - condition.negate() through De Morgan on a `&` of two fresh-register comparisons
+    #     in the loop exit condition
+    #   - multiple early-return BXEQ paths after the loop
+    CODE = b"\x03\x00\x52\xe3\x00\x30\xa0\x91\x0e\x00\x00\x9a\x00\x30\xa0\xe1\x02\xc0\xa0\xe1\x04\xc0\x4c\xe2\x03\x00\x5c\xe3\x00\x10\x83\xe5\x04\x10\x83\xe5\x08\x10\x83\xe5\x0c\x10\x83\xe5\x10\x30\x83\xe2\xf7\xff\xff\x8a\x04\x20\x42\xe2\x22\x31\xa0\xe1\x01\x30\x83\xe2\x03\x32\x80\xe0\x03\x20\x02\xe2\x00\x00\x52\xe3\x1e\xff\x2f\x01\x01\x00\x52\xe3\x00\x10\x83\xe5\x1e\xff\x2f\x01\x03\x00\x52\xe3\x04\x10\x83\xe5\x08\x10\x83\x05\x1e\xff\x2f\xe1"
+    ADDR = 0x643A8
+
+    def test_analyses_without_crashing(self):
+        # Before the negate-De-Morgan fix the BHI inside the loop produced a
+        # composite '&' condition that condition.negate() couldn't invert when
+        # the loop machinery asked for the exit-condition shape.
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        # Loop body has 4 unrolled stores at +0, +4, +8, +12 from the pointer.
+        store_count = sum(1 for ma in engine.memory_accesses
+                          if ma.access_type == MemoryAccessType.STORE)
+        assert store_count >= 4
+
+    def test_loop_has_one_block(self):
+        # Single-block do/while: tail of body has the back-edge.
+        project = Project("ARM:LE:32:v7")
+        bf = BinaryFunction(self.ADDR, self.CODE, project)
+        assert len(bf.loops_dict_start_address) == 1
+        loop = bf.loops_dict_start_address[0x643BC][0]
+        assert loop.blocks == {0x643BC}
+
+    def test_stored_value_is_fill_word(self):
+        # Every store inside the loop writes the fill word (arg1).
+        project = Project("ARM:LE:32:v7")
+        engine = Engine(BinaryFunction(self.ADDR, self.CODE, project))
+        engine.analyze()
+        loop_stores = [
+            ma for ma in engine.memory_accesses
+            if ma.access_type == MemoryAccessType.STORE and 0x643BC <= ma.addr <= 0x643D0
+        ]
+        assert len(loop_stores) == 4
+        for store in loop_stores:
+            assert store.stored_value == Arg(1)
