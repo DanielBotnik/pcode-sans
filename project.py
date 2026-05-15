@@ -1,4 +1,5 @@
-from typing import Mapping
+from typing import Any, Mapping
+import os
 import weakref
 import pypcode
 
@@ -18,6 +19,16 @@ class ArchRegisters:
     names: Mapping[int, str]
 
 
+# (cle arch.name, arch.memory_endness) -> pypcode language id
+_LANGUAGE_BY_ARCH = {
+    ("MIPS32", "Iend_BE"): "MIPS:BE:32:default",
+    ("MIPS32", "Iend_LE"): "MIPS:LE:32:default",
+    ("ARMEL", "Iend_LE"): "ARM:LE:32:v7",
+    ("ARMHF", "Iend_LE"): "ARM:LE:32:v7",
+    ("ARMEB", "Iend_BE"): "ARM:BE:32:v7",
+}
+
+
 class Project:
     # At most one Project may exist at a time. Constructing one registers it as
     # THE current project, so the rest of the engine can reach arch info
@@ -28,23 +39,67 @@ class Project:
     # could never run and a second Project could never be created).
     _current: "weakref.ref[Project] | None" = None
 
-    _cached_context_defaults: Mapping[str | pypcode.ArchLanguage, pypcode.Context] = dict()
+    _cached_context_defaults: "dict[str | pypcode.ArchLanguage, pypcode.Context]" = dict()
 
-    def __init__(self, language: str | pypcode.ArchLanguage):
+    def __init__(self, target: "str | bytes | os.PathLike | pypcode.ArchLanguage", language: "str | None" = None):
+        """`target` is either a pypcode language id (e.g. "MIPS:BE:32:default")
+        or an ELF (raw bytes / a path). For an ELF the whole loadable image is
+        mapped into memory and the architecture is derived from the header
+        unless `language` is given explicitly."""
         if Project._live() is not None:
             raise RuntimeError(
                 "A Project already exists; release it (it must be __del__'d) before constructing another"
             )
 
-        if language in Project._cached_context_defaults:
-            context = Project._cached_context_defaults[language]
+        # cle.Loader owns the binary image; reach bytes via self.loader.memory.
+        # Typed Any: cle ships no type stubs.
+        self.loader: Any = None
+        self.entry: "int | None" = None
+
+        lang: "str | pypcode.ArchLanguage"
+        if self._is_language_id(target):
+            if language is not None:
+                raise ValueError("`language` is redundant when `target` is already a language id")
+            assert isinstance(target, (str, pypcode.ArchLanguage))
+            lang = target
         else:
-            context = pypcode.Context(language)
-            Project._cached_context_defaults[language] = context
+            derived = self._load_elf(target)
+            lang = language if language is not None else derived
+
+        if lang in Project._cached_context_defaults:
+            context = Project._cached_context_defaults[lang]
+        else:
+            context = pypcode.Context(lang)
+            Project._cached_context_defaults[lang] = context
 
         self.context = context
         self.arch_regs = Project._create_arch_registers(self.context)
         Project._current = weakref.ref(self)
+
+    @staticmethod
+    def _is_language_id(target: object) -> bool:
+        if isinstance(target, pypcode.ArchLanguage):
+            return True
+        # pypcode ids look like "ARCH:ENDIAN:BITS:VARIANT"; a real path won't.
+        return isinstance(target, str) and ":" in target and not os.path.isfile(target)
+
+    def _load_elf(self, target: "str | bytes | os.PathLike") -> str:
+        """Load the binary with cle and return the derived pypcode language id.
+        Bytes go through a stream; a path is loaded directly. Memory is read via
+        self.loader.memory.load(addr, size)."""
+        import cle  # type: ignore[import-not-found]
+        import io
+
+        source = io.BytesIO(bytes(target)) if isinstance(target, (bytes, bytearray)) else os.fspath(target)
+        self.loader = cle.Loader(source, auto_load_libs=False)
+        arch = self.loader.main_object.arch
+        self.entry = self.loader.main_object.entry
+
+        key = (arch.name, arch.memory_endness)
+        language = _LANGUAGE_BY_ARCH.get(key)
+        if language is None:
+            raise ValueError(f"Unsupported architecture: {key}")
+        return language
 
     def __del__(self):
         # Free the slot once this project is collected so a new one can be made.
