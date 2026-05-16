@@ -3,7 +3,7 @@ name = "pcode-sans"
 version = "0.1.0"
 description = "P-Code static analysis engine for binary functions"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "igraph>=1.0.0",
     "pypcode",
