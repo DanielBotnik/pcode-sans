@@ -89,9 +89,6 @@ class Project:
     def _load_elf(target: "str | os.PathLike") -> Any:
         """Read the file fully into a BytesIO and hand that to cle. Returns the
         cle.Loader (typed Any: cle ships no type stubs)."""
-        import fast_elf  # bulk symbol-table parsing; ~6x faster cle load
-
-        fast_elf.install()
         with open(os.fspath(target), "rb") as fh:
             stream = io.BytesIO(fh.read())
         return cle.Loader(stream, auto_load_libs=False, perform_relocations=False)
