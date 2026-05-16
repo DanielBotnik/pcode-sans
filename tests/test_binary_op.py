@@ -9,7 +9,7 @@ from project import Project
 def _project():
     # create_binop's numeric evaluation needs Project.current() for the word
     # mask. These are pure-algebra tests with no binary, so supply a 32-bit one.
-    project = Project("MIPS:BE:32:default")
+    project = Project(language="MIPS:BE:32:default")
     yield project
     del project
 

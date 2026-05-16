@@ -11,7 +11,7 @@ class TestDoubleDeref:
         CODE = b"\x8c\x83\x00\x00\x8c\xa2\x00\x00\x8c\x63\x00\x00\x8c\x42\x00\x00\x03\xe0\x00\x08\x00\x62\x10\x23"
         ADDR = 0x00496400
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -31,7 +31,7 @@ class TestDoubleDeref:
         CODE = b"\x8c\x83\x00\x00\x8c\xa2\x00\x00\x8c\x63\x00\x00\x8c\x42\x00\x00\x03\xe0\x00\x08\x00\x62\x10\x23"
         ADDR = 0x00496400
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -49,7 +49,7 @@ class TestTailCallWithConditional:
         CODE = b"\x10\x80\x00\x03\x00\x00\x00\x00\x08\x10\xa4\xa5\x8c\x84\x00\x00\x03\xe0\x00\x08\x00\x00\x10\x21"
         ADDR = 0x00429708
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -64,7 +64,7 @@ class TestTailCallWithConditional:
         CODE = b"\x10\x80\x00\x03\x00\x00\x00\x00\x08\x10\xa4\xa5\x8c\x84\x00\x00\x03\xe0\x00\x08\x00\x00\x10\x21"
         ADDR = 0x00429708
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -78,7 +78,7 @@ class TestTailCallWithConditional:
         CODE = b"\x10\x80\x00\x03\x00\x00\x00\x00\x08\x10\xa4\xa5\x8c\x84\x00\x00\x03\xe0\x00\x08\x00\x00\x10\x21"
         ADDR = 0x00429708
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -90,7 +90,7 @@ class TestTailCallWithConditional:
         CODE = b"\x10\x80\x00\x03\x00\x00\x00\x00\x08\x10\xa4\xa5\x8c\x84\x00\x00\x03\xe0\x00\x08\x00\x00\x10\x21"
         ADDR = 0x00429708
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -110,7 +110,7 @@ class TestLoopWithByteLoads:
         CODE = b"\x00\x00\x18\x21\x00\x00\x10\x21\x10\x66\x00\x09\x00\xa3\x38\x21\x00\x83\x40\x21\x24\x63\x00\x01\x90\xe7\x00\x00\x91\x08\x00\x00\x00\xe8\x38\x26\x30\xe7\x00\xff\x08\x11\xd9\x7a\x00\x47\x10\x25\x03\xe0\x00\x08\x00\x02\x10\x2b"
         ADDR = 0x004765E0
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -129,7 +129,7 @@ class TestLoopWithByteLoads:
         CODE = b"\x00\x00\x18\x21\x00\x00\x10\x21\x10\x66\x00\x09\x00\xa3\x38\x21\x00\x83\x40\x21\x24\x63\x00\x01\x90\xe7\x00\x00\x91\x08\x00\x00\x00\xe8\x38\x26\x30\xe7\x00\xff\x08\x11\xd9\x7a\x00\x47\x10\x25\x03\xe0\x00\x08\x00\x02\x10\x2b"
         ADDR = 0x004765E0
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -143,7 +143,7 @@ class TestLoopWithByteLoads:
         CODE = b"\x00\x00\x18\x21\x00\x00\x10\x21\x10\x66\x00\x09\x00\xa3\x38\x21\x00\x83\x40\x21\x24\x63\x00\x01\x90\xe7\x00\x00\x91\x08\x00\x00\x00\xe8\x38\x26\x30\xe7\x00\xff\x08\x11\xd9\x7a\x00\x47\x10\x25\x03\xe0\x00\x08\x00\x02\x10\x2b"
         ADDR = 0x004765E0
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 

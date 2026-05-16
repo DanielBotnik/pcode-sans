@@ -1,10 +1,11 @@
-import abc
 import os
 import weakref
 import pypcode
 
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Mapping
 from dataclasses import dataclass
+from memory_access import ELFMemoryAccess, MemoryAccess
+from symbol_table import SymbolTable
 
 
 @dataclass
@@ -30,70 +31,6 @@ _LANGUAGE_BY_ARCH = {
 }
 
 
-class MemoryAccess(abc.ABC):
-    """Read-only view of the loaded program image, addressed by virtual address."""
-
-    @abc.abstractmethod
-    def read(self, address: int, size: int) -> bytes: ...
-
-
-class ELFMemoryAccess(MemoryAccess):
-    def __init__(self, loader: Any):
-        self._loader = loader
-
-    def read(self, address: int, size: int) -> bytes:
-        return self._loader.memory.load(address, size)
-
-
-@dataclass(frozen=True)
-class Symbol:
-    name: str
-    address: int
-    size: int
-    is_function: bool
-
-
-class SymbolTable:
-    """Every symbol known to the project, indexed by name and by address.
-    The first symbol seen for a given name/address wins the index lookup, but
-    iteration yields all of them so callers can still see aliases/duplicates."""
-
-    def __init__(self, symbols: Iterable[Symbol] = ()):
-        self._symbols: list[Symbol] = []
-        self._by_name: dict[str, Symbol] = {}
-        self._by_address: dict[int, Symbol] = {}
-        for symbol in symbols:
-            self.add(symbol)
-
-    def add(self, symbol: Symbol) -> None:
-        self._symbols.append(symbol)
-        self._by_name.setdefault(symbol.name, symbol)
-        self._by_address.setdefault(symbol.address, symbol)
-
-    def by_name(self, name: str) -> "Symbol | None":
-        return self._by_name.get(name)
-
-    def by_address(self, address: int) -> "Symbol | None":
-        return self._by_address.get(address)
-
-    def __iter__(self) -> Iterator[Symbol]:
-        return iter(self._symbols)
-
-    def __len__(self) -> int:
-        return len(self._symbols)
-
-    def __contains__(self, name: object) -> bool:
-        return name in self._by_name
-
-    @classmethod
-    def from_loader(cls, loader: Any) -> "SymbolTable":
-        return cls(
-            Symbol(s.name, s.rebased_addr, s.size, s.is_function)
-            for s in loader.main_object.symbols
-            if s.name
-        )
-
-
 class Project:
     # At most one Project may exist at a time. Constructing one registers it as
     # THE current project, so the rest of the engine can reach arch info
@@ -106,12 +43,17 @@ class Project:
 
     _cached_context_defaults: "dict[str | pypcode.ArchLanguage, pypcode.Context]" = dict()
 
-    def __init__(self, target: "str | os.PathLike | pypcode.ArchLanguage", language: "str | None" = None):
-        """`target` is either a pypcode language id (e.g. "MIPS:BE:32:default")
-        or a path to an ELF. For an ELF the whole loadable image is mapped into
+    def __init__(
+        self,
+        target: "str | os.PathLike | None" = None,
+        language: "str | pypcode.ArchLanguage | None" = None,
+    ):
+        """`target` is a path to an ELF: its whole loadable image is mapped into
         memory (reachable via `self.memory_access`), its symbols are collected
         into `self.symbol_table`, and the architecture is derived from the
-        header unless `language` is given explicitly."""
+        header — unless `language` is also given, which overrides it. When no
+        `target` is given, `language` selects the architecture directly and
+        there is no image or symbol table."""
         if Project._live() is not None:
             raise RuntimeError(
                 "A Project already exists; release it (it must be __del__'d) before constructing another"
@@ -121,17 +63,15 @@ class Project:
         self.symbol_table: SymbolTable = SymbolTable()
 
         lang: "str | pypcode.ArchLanguage"
-        if self._is_language_id(target):
-            if language is not None:
-                raise ValueError("`language` is redundant when `target` is already a language id")
-            assert isinstance(target, (str, pypcode.ArchLanguage))
-            lang = target
-        else:
+        if target is not None:
             loader = self._load_elf(target)
             self.memory_access = ELFMemoryAccess(loader)
             self.symbol_table = SymbolTable.from_loader(loader)
-            derived = self._derive_language(loader)
-            lang = language if language is not None else derived
+            lang = language if language is not None else self._derive_language(loader)
+        elif language is not None:
+            lang = language
+        else:
+            raise ValueError("Project requires either a `target` path or a `language`")
 
         if lang in Project._cached_context_defaults:
             context = Project._cached_context_defaults[lang]
@@ -142,13 +82,6 @@ class Project:
         self.context = context
         self.arch_regs = Project._create_arch_registers(self.context)
         Project._current = weakref.ref(self)
-
-    @staticmethod
-    def _is_language_id(target: object) -> bool:
-        if isinstance(target, pypcode.ArchLanguage):
-            return True
-        # pypcode ids look like "ARCH:ENDIAN:BITS:VARIANT"; a real path won't.
-        return isinstance(target, str) and ":" in target and not os.path.isfile(target)
 
     @staticmethod
     def _load_elf(target: "str | os.PathLike") -> Any:

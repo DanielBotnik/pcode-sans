@@ -11,7 +11,7 @@ class TestCallSites:
         CODE = b"'\xbd\xff\xd8\xaf\xbf\x00$\x8f\xa2\x008\xaf\xa2\x00\x10$\x02\x00\x01\x0c\x12=_\xaf\xa2\x00\x14\x8f\xbf\x00$\x03\xe0\x00\x08'\xbd\x00("
         ADDR = 0x0048FA90
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -27,7 +27,7 @@ class TestCallSites:
         CODE = b"$\x06\x00\x04\x08\x13\x88\xdc\x00\x008!"
         ADDR = 0x004E3C84
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -44,7 +44,7 @@ class TestCallSites:
         ADDR = 0x004A1678
         PKCS7_it = 0x005DD284
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -60,7 +60,7 @@ class TestCallSites:
         CODE = b"<\x1c\x00_\x00\xa08!'\x9c'\xe0<\x05\x00['\xbd\xff\xc8\x00\x800!\x8f\x99\x99l\x8f\x84\x99\xb0$\xa5\x91\x18\xaf\xbf\x004\xaf\xbc\x00(\xaf\xa0\x00\x10\xaf\xa0\x00\x14\xaf\xa0\x00\x18\xaf\xa0\x00\x1c\x03 \xf8\t\xaf\xa0\x00 \x8f\xbf\x004\x03\xe0\x00\x08'\xbd\x008"
         ADDR = 0x004A0390
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -88,7 +88,7 @@ class TestCallSites:
         CODE = b"\x3c\x1c\x00\x5f\x27\xbd\xff\xc8\x27\x9c\x27\xe0\xaf\xb0\x00\x2c\x27\xb0\x00\x24\xaf\xb1\x00\x30\x27\xa6\x00\x20\xaf\xa5\x00\x10\x00\x80\x88\x21\xaf\xbf\x00\x34\x00\x00\x20\x21\xaf\xbc\x00\x18\x00\x00\x38\x21\x8f\x99\x9d\x04\x03\x20\xf8\x09\x02\x00\x28\x21\x10\x40\x00\x06\x8f\xbf\x00\x34\x8f\xa6\x00\x20\x02\x20\x20\x21\x0c\x13\x72\x84\x02\x00\x28\x21\x8f\xbf\x00\x34\x8f\xb1\x00\x30\x8f\xb0\x00\x2c\x03\xe0\x00\x08\x27\xbd\x00\x38"
         ADDR = 0x004DCA94
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 

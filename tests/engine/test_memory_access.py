@@ -11,7 +11,7 @@ class TestMemoryAccess:
         CODE = b"<\x1c\x00_<\x05\x00\\'\x9c'\xe0'\xbd\xff\xd8$\x04\x004\x8f\x99\x82\xd4$\xa5\x8e`\xaf\xbf\x00$\xaf\xbc\x00\x10\x03 \xf8\t$\x06\x00K\x10@\x00\x06\x00@ !\x0c\x133\xb8\xaf\xa2\x00\x18$\x03\x00\x01\x8f\xa2\x00\x18\xacC\x000\x8f\xbf\x00$\x03\xe0\x00\x08'\xbd\x00("
         ADDR = 0x004CCF2C
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -34,7 +34,7 @@ class TestMemoryAccess:
         CODE = b"\x08\x12\x8b\xeb\x8c\x84\x00\x18"
         ADDR = 0x004A4EB8
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -52,7 +52,7 @@ class TestMemoryAccess:
         CODE = b"<\x1c\x00_'\xbd\xff\xd8'\x9c'\xe0\xaf\xb0\x00 <\x10\x00Z$\x04\x00\x14\xaf\xbf\x00$\xaf\xbc\x00\x18&\x057\x08\x8f\x99\x82\xd4\x03 \xf8\t$\x06\x01\x10\x14@\x00\x0b\x8f\xbc\x00\x18$\x02\x01\x11\x8f\x99\x81\xec$\x04\x00\x03$\x05\x00q$\x06\x00A\xaf\xa2\x00\x10\x03 \xf8\t&\x077\x08\x08\x11\xe6~\x00\x00\x10!$\x03\x00\x01\xac@\x00\x04\xac@\x00\x0c\xac@\x00\x08\xacC\x00\x10\xac@\x00\x00\x8f\xbf\x00$\x8f\xb0\x00 \x03\xe0\x00\x08'\xbd\x00("
         ADDR = 0x00479980
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -70,7 +70,7 @@ class TestMemoryAccess:
         CODE = b"\x8c\x82\x00\x00\x03\xe0\x00\x08\xacE\x00\x08"
         ADDR = 0x00445BDC
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -84,7 +84,7 @@ class TestMemoryAccess:
         CODE = b"<\x1c\x00_'\xbd\xff\xe0'\x9c'\xe0\xaf\xb0\x00\x18\xaf\xbf\x00\x1c\xaf\xbc\x00\x10\x0c\x14\xefS\x00\x00\x00\x00\x8f\xbc\x00\x10\x10@\x00\x08\x00@\x80!\x8f\x99\x93L\x03 \xf8\t$\x04\x00\x15\x00\x00(!\xae\x02\x00\x00\x0c\x14\xf0\xde\x02\x00 !\x8f\xbf\x00\x1c\x02\x00\x10!\x8f\xb0\x00\x18\x03\xe0\x00\x08'\xbd\x00 "
         ADDR = 0x0053C444
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
@@ -103,7 +103,7 @@ class TestMemoryAccess:
         CODE = b"$\x82\x00\x10$\x84\x04\x0c\xacE\x00\x00$B\x00\x04TD\xff\xfe\xacE\x00\x00\x03\xe0\x00\x08\x00\x00\x00\x00"  #
         ADDR = 0x0044F01C
 
-        project = Project("MIPS:BE:32:default")
+        project = Project(language="MIPS:BE:32:default")
         engine = Engine(BinaryFunction(ADDR, CODE))
         engine.analyze()
 
